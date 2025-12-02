@@ -353,7 +353,7 @@ func isReadOnlyCommand(cmd string) bool {
 	return false
 }
 
-// [核心修复] 捕获 Exit Code，防止 AI 幻觉
+// 捕获 Exit Code，防止 AI 幻觉
 func executeShell(c string) string {
 	cmd := exec.Command("bash", "-c", c)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
