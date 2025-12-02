@@ -104,7 +104,7 @@ func initClient() error {
 
 func runWebMode(cmd *cobra.Command, args []string) {
 	go runPatrolLoop(8 * time.Hour)
-	go sendSystemStatus() // 启动即汇报
+	go sendSystemStatus()
 
 	http.HandleFunc("/", handleWebIndex)
 	http.HandleFunc("/api/logs", handleWebLogs)
@@ -378,11 +378,8 @@ func performPatrol() {
 	}
 	
 	// 4. 僵尸进程 [极致智能修复版]
-	// 逻辑：先只抓取 PID，如果有内容，再手动拼接表头。
-	// 这样可以确保：如果抓取结果为空，绝对不会进入 if，绝对不会发给 AI。
 	rawZombies := executeShell("ps -A -o stat,ppid,pid,cmd | awk '$1 ~ /^[Zz]/'")
 	if strings.TrimSpace(rawZombies) != "" && !strings.Contains(rawZombies, "exit status") {
-		// 只有真的有僵尸，才拼接表头
 		detailZombie := "STAT    PPID     PID CMD\n" + rawZombies
 		anomalies = append(anomalies, "**僵尸进程**:\n```\n"+strings.TrimSpace(detailZombie)+"\n```")
 	}
@@ -403,7 +400,6 @@ func analyzeWithAI(issue string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	
-	// [极致智能 Prompt] 增加空数据防御
 	sysPrompt := `你是一个紧急故障响应专家。
 规则：
 1. **极度简练**：只输出核心原因和一条修复命令。
@@ -513,9 +509,10 @@ func isReadOnlyCommand(cmd string) bool {
 	return false
 }
 
+// [修复] 移除 Setpgid 以兼容 Windows 编译
 func executeShell(c string) string {
 	cmd := exec.Command("bash", "-c", c)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // 已移除，解决 Windows 编译报错
 	out, err := cmd.CombinedOutput()
 	res := string(out)
 	if err != nil { if len(res) > 0 { res += fmt.Sprintf("\n(Command failed: %v)", err) } else { res = fmt.Sprintf("(Command failed: %v)", err) } }
