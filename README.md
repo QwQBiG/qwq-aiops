@@ -1,115 +1,144 @@
-# 🤖 qwq - 极简主义 AIOps 智能运维助手
+# 🤖 qwq - 极简主义 AIOps 智能运维 Agent
 
-## 1. 项目概述
-qwq 是一个基于 Go 语言开发的轻量级 AIOps（智能运维）Agent。它利用大语言模型（LLM）的推理能力，结合 Linux 系统原生命令，实现服务器的交互式排查和无人值守巡检。
+**你的 24 小时 AI 运维专家**，集交互排查、自动巡检、可视化监控于一体。
 
-### 核心亮点
-- 🧠 **真正的 Agent 能力**：基于 OpenAI Native Function Calling 技术，AI 不仅能“说话”，还能“做事”（执行 Shell 命令）。
-- 🛡️ **安全第一**：
-  - **Human-in-the-loop**：交互模式下，所有命令执行前需用户确认。
-  - **黑名单拦截**：内置高危命令（如 `rm -rf`）拦截机制。
-  - **智能过滤**：自动识别并忽略权限报错（如 `dmesg` 权限不足）和空结果，防止误报。
-- 🚀 **双模式运行**：
-  - **Chat 模式**：像和真人专家聊天一样排查问题。
-  - **Patrol 模式**：7x24小时后台巡检，异常自动推送到钉钉。
-- ⚡ **极速轻量**：单二进制文件部署，无复杂依赖，资源占用极低。
+qwq 是一个基于 Go 语言开发的轻量级 AIOps Agent。它利用大语言模型（LLM，如 Qwen2.5）的推理能力，结合 Linux/Kubernetes 原生命令，实现服务器的自然语言交互排查和无人值守智能巡检。
 
-## 2. 用户操作指南 (User Guide)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Go Version](https://img.shields.io/badge/Go-1.21%2B-cyan.svg)
+![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)
 
-### 🛠️ 准备工作
+## ✨ 核心功能
 
-#### 获取 API Key：
-推荐使用硅基流动（SiliconFlow）的 Qwen/Qwen2.5-7B-Instruct 模型（免费且强大）。
-> 注意：请使用您新生成的 Key，不要使用之前泄露的。
+### 💬 交互式排查 (Chat Mode)
+- **自然语言指令**：直接说"帮我查一下 CPU 最高的进程"或"分析 K8s Pod 为什么起不来"。
+- **智能执行**：自动识别只读命令（如 ls, top, kubectl get）并秒级执行；高危命令（如 rm, kill）需人工确认。
+- **ReAct 推理**：支持多步推理，例如先查 PID，再根据 PID 查启动时间。
 
-#### 设置环境变量：
-在终端执行（或写入 `~/.bashrc`）：
+### 🚨 无人值守巡检 (Patrol Mode)
+- **全天候守护**：后台静默运行，每 5 分钟自动检测磁盘、负载、OOM 日志及僵尸进程。
+- **精准告警**：内置智能过滤逻辑，杜绝权限报错、空结果等误报。
+- **AI 诊断**：告警信息包含 AI 生成的根因分析与修复命令（如自动识别僵尸进程需杀父进程）。
+
+### 📊 可视化仪表盘 (Web Dashboard)
+- **赛博朋克 UI**：内置 Web 服务器（端口 8899），提供暗黑风实时监控面板。
+- **实时数据**：动态展示 CPU、内存、磁盘进度条及实时运行日志。
+- **一键交互**：支持在网页端手动触发巡检。
+
+### 📱 钉钉深度集成
+- **健康日报**：每 8 小时自动发送服务器状态卡片（表格化排版）。
+- **实时告警**：异常情况秒级推送。
+
+## 🛠️ 安装指南
+
+### 1. 环境要求
+- Linux (推荐 Ubuntu/CentOS) 或 macOS
+- Go 1.21+ (用于编译)
+- API Key: 硅基流动 (SiliconFlow) 或其他兼容 OpenAI 格式的 API Key。
+
+### 2. 编译项目
 ```bash
-export OPENAI_API_KEY=sk-您的密钥
-```
+# 1. 克隆项目 (假设你已上传 GitHub)
+git clone https://github.com/your-username/qwq-aiops.git
+cd qwq-aiops
 
-#### 编译项目：
+# 2. 下载依赖
+go mod tidy
 
-确保当前目录下有最新的 main.go，然后执行：
-```bash
+# 3. 编译二进制文件
 go build -o qwq main.go
 ```
-编译成功后，当前目录会出现一个名为 qwq 的可执行文件。
 
-## 💬 模式一：交互式排查 (Chat Mode)
+## 3. 配置环境变量
+为了安全起见，API Key 不硬编码在代码中，请设置环境变量：
 
-**适用场景**：服务器出问题了，你需要 AI 帮你分析日志、查进程、看负载。
+```bash
+# 临时生效
+export OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
 
-#### 启动命令：
+# 永久生效 (推荐)
+echo 'export OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx' >> ~/.bashrc
+source ~/.bashrc
+```
+
+## 📖 使用手册
+
+### 1. 启动 Web 可视化面板 (推荐)
+这是最强大的模式，同时启动 Web 服务器 + 后台巡检 + 健康日报。
+
+```bash
+# 使用 sudo -E 以便读取内核日志(dmesg)并保留环境变量
+# 注意：URL 请使用双引号包裹
+sudo -E nohup ./qwq web --webhook="https://oapi.dingtalk.com/robot/send?access_token=你的TOKEN" > web.log 2>&1 &
+```
+
+**访问地址**: http://服务器IP:8899  
+**查看日志**: `tail -f web.log`
+
+### 2. 交互式排查 (Chat)
+像和真人专家聊天一样排查问题。
+
 ```bash
 ./qwq chat
 ```
 
-### 操作流程：
-
-1. **提问**：输入你的需求，例如：“帮我看看为什么系统这么卡” 或 “检查一下 80 端口被谁占用了”。
-2. **审批**：AI 会思考并申请执行命令（例如 `top` 或 `netstat`）。
-   - 看到 `[?] 执行? (Y/n):` 时，按回车确认执行。
-   - 如果觉得命令危险，按 `n` 拒绝。
-3. **结果**：AI 会根据命令输出，给出最终的分析结论。
-4. **退出**：输入 `exit` 或 `quit`。
-
----
-
-## 🚨 模式二：无人值守巡检 (Patrol Mode)
-
-**适用场景**：挂在后台，每 5 分钟自动检查一次磁盘、负载、OOM 和僵尸进程。有异常才发钉钉，没异常不打扰。
-
-### 前置要求：
-需要一个钉钉机器人的 Webhook 地址（在钉钉群设置 -> 智能群助手 -> 机器人 -> 添加自定义机器人 -> 安全设置必须勾选“自定义关键词”，填入“告警”）。
-
-#### 方式 A：前台测试（调试用）
-```bash
-# 注意：URL 必须用双引号包裹，且不要加反斜杠
-sudo -E ./qwq patrol --webhook="https://oapi.dingtalk.com/robot/send?access_token=您的Token"
+**演示案例：**
+```text
+用户: "帮我看看 8080 端口被谁占用了？"
+qwq: (自动执行 lsof -i :8080) "被 java 进程占用，PID 是 12345。"
+用户: "杀掉它。"
+qwq: "⚠️ 这是一个修改操作，确认执行 kill -9 12345 吗？(Y/n)"
 ```
 
-> `sudo -E` 的作用是使用 `root` 权限运行（以便读取内核日志），同时保留当前用户的环境变量（API Key）。
-
-#### 方式 B：后台静默运行（生产环境推荐）
-
-使用 nohup 让程序在后台运行，即使关闭终端也不会停止。
+### 3. 纯后台巡检 (Patrol)
+如果你不需要 Web 面板，只想安静地监控。
 
 ```bash
-sudo -E nohup ./qwq patrol --webhook="https://oapi.dingtalk.com/robot/send?access_token=您的Token" > patrol.log 2>&1 &
+sudo -E nohup ./qwq patrol --webhook="你的钉钉URL" > patrol.log 2>&1 &
 ```
 
-#### 常用运维操作：
+### 4. 立即发送状态报告
+手动触发一次钉钉健康日报推送。
 
-**查看运行日志**：
 ```bash
-tail -f patrol.log
+./qwq status --webhook="你的钉钉URL"
 ```
 
-**停止巡检**：
-```bash
-sudo pkill qwq
-```
+## 🛡️ 安全机制
 
-## 3. 常见问题排查 (Troubleshooting)
+**Human-in-the-loop (人在回路):**
+- 所有修改类命令（rm, kill, kubectl delete 等）必须经过用户 Y/n 确认。
+- 查询类命令（ls, top, kubectl get）自动放行，提升效率。
 
-| **问题现象**                | **可能原因**               | **解决方案**                                                                                                                                                      |
-|---------------------------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **API Error (无详细信息)**     | 运行的是旧版本程序         | 请执行 `go build -o qwq main.go` 重新编译，并使用 `./qwq` 运行。                                                                                                  |
-| **API Error: 401 Unauthorized** | API Key 错误或未设置        | 检查 `echo $OPENAI_API_KEY`，确保 Key 有效且无多余空格。                                                                                                        |
-| **钉钉收不到告警**             | 1. 关键词未设置<br>2. URL 格式错误 | 1. 钉钉后台安全设置必须包含关键词“告警”。<br>2. 启动命令中的 URL 不要加 `\` 转义符。                                                                              |
-| **`dmesg` 报错 "不允许的操作"**  | 权限不足                   | 请使用 `sudo -E ./qwq ...` 运行程序。                                                                                                                             |
-| **一直报 HTTP 400**           | 启动参数中的 URL 写错了    | 确保 `--webhook="..."` 中使用的是双引号，且 URL 完整。                                                                                                           |
+**黑名单拦截:**
+- 硬编码拦截 `rm -rf /`, `mkfs`, `dd if=/dev/zero` 等毁灭性命令。
 
----
+**智能防幻觉:**
+- 如果命令执行结果为空或报错，代码层直接拦截，防止 AI 编造虚假输出。
 
-## 4. 项目文件结构
+## ❓ 常见问题 (FAQ)
+
+**Q: 启动时报错 API Error？**  
+A: 请检查 `echo $OPENAI_API_KEY` 是否为空。如果使用 sudo 运行，请务必加上 `-E` 参数（`sudo -E ./qwq ...`）以传递环境变量。
+
+**Q: 钉钉收不到消息？**  
+A:  
+1. 检查钉钉机器人安全设置，自定义关键词必须包含"告警"或"日报"。  
+2. 启动命令中的 Webhook URL 不要包含反斜杠 `\` 转义符。
+
+**Q: 僵尸进程检测不到？**  
+A: 僵尸进程通常稍纵即逝。qwq 采用精准捕获逻辑，只有当 ps 状态栏明确显示 Z 时才会报警。如果父进程已退出，僵尸进程会被系统自动回收，此时显示"系统健康"是正常的。
+
+**Q: 为什么需要 root 权限？**  
+A: 读取内核环形缓冲区日志 (dmesg) 通常需要 root 权限。如果以普通用户运行，OOM（内存溢出）检测功能可能会失效（代码会自动忽略权限报错）。
+
+## 🏗️ 项目结构
+
 ```text
 .
-├── main.go        # 核心源码（包含 Chat 和 Patrol 逻辑）
-├── qwq            # 编译后的二进制文件（由 go build 生成）
-├── patrol.log     # 巡检模式的运行日志（由 nohup 生成）
-└── go.mod         # Go 依赖定义
+├── main.go          # 核心源码 (单文件架构，易于维护)
+├── go.mod           # 依赖管理
+├── qwq              # 编译后的二进制程序
+├── web.log          # Web 模式运行日志
+└── README.md        # 项目文档
 ```
-
----
