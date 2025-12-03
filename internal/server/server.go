@@ -8,21 +8,31 @@ import (
 	"net/http"
 	"qwq/internal/config"
 	"qwq/internal/logger"
+	"qwq/internal/monitor"
+	"qwq/internal/notify"
 	"qwq/internal/utils"
 	"strings"
+	"sync"
+	"time"
 )
 
 //go:embed static/index.html
 var content embed.FS
 
 var (
-	// LogBuffer 和 LogMutex 已移除，改用 logger 模块
+	LogBuffer         []string
+	LogMutex          sync.Mutex
 	TriggerPatrolFunc func()
 	TriggerStatusFunc func()
+	logFile           *os.File
 )
 
 func Start(port string) {
-	// 日志初始化已在 main.go 完成
+	var err error
+	logFile, err = os.OpenFile("qwq.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("无法创建日志文件: %v\n", err)
+	}
 
 	http.HandleFunc("/", basicAuth(handleIndex))
 	http.HandleFunc("/api/logs", basicAuth(handleLogs))
@@ -64,7 +74,6 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogs(w http.ResponseWriter, r *http.Request) {
-	// 从 logger 模块获取日志
 	json.NewEncoder(w).Encode(logger.GetWebLogs())
 }
 
@@ -85,6 +94,9 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		diskAvail = diskParts[1]
 	}
 
+	// 获取 HTTP 监控状态
+	httpStatus := monitor.RunChecks()
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"load":       load,
 		"mem_pct":    fmt.Sprintf("%.1f", memPct),
@@ -92,6 +104,7 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		"mem_total":  fmt.Sprintf("%.0f", memTotal),
 		"disk_pct":   diskPct,
 		"disk_avail": diskAvail,
+		"services":   httpStatus, // 传给前端
 	})
 }
 
@@ -101,7 +114,6 @@ func handleTrigger(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("指令已发送：正在后台执行巡检和汇报..."))
 }
 
-// WebLog 辅助函数现在直接调用 logger.Info
 func WebLog(msg string) {
 	logger.Info(msg)
 }

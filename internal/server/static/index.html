@@ -5,162 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>qwq AIOps 控制台</title>
     <style>
-        :root {
-            --bg: #0f172a;
-            --card-bg: #1e293b;
-            --text: #e2e8f0;
-            --accent: #38bdf8;
-            --success: #4ade80;
-            --danger: #f87171;
-            --border: #334155;
-        }
-        body {
-            background-color: var(--bg);
-            color: var(--text);
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+        :root { --bg: #0f172a; --card-bg: #1e293b; --text: #e2e8f0; --accent: #38bdf8; --success: #4ade80; --danger: #f87171; --border: #334155; }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+        .header h1 { margin: 0; font-size: 24px; display: flex; align-items: center; gap: 10px; }
+        .status-dot { width: 10px; height: 10px; background-color: var(--success); border-radius: 50%; box-shadow: 0 0 10px var(--success); animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); } }
+        .btn { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: all 0.2s; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { background: #475569; cursor: not-allowed; transform: none; }
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .card { background: var(--card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border: 1px solid var(--border); transition: border-color 0.3s; }
+        .card:hover { border-color: var(--accent); }
+        .card h3 { margin-top: 0; color: #94a3b8; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+        .metric { font-size: 28px; font-weight: bold; color: var(--accent); margin: 10px 0; }
+        .sub-text { font-size: 12px; color: #64748b; }
+        .progress-bg { background: #334155; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 10px; }
+        .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.5s ease, background-color 0.3s; }
+        .progress-fill.high { background: var(--danger); }
+        .log-window { background: #000; border: 1px solid var(--border); border-radius: 8px; height: 300px; overflow-y: auto; padding: 15px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; color: #a5b4fc; box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.2); }
+        .log-entry { margin-bottom: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 4px; word-break: break-all; }
+        .log-time { color: #64748b; margin-right: 10px; user-select: none; }
         
-        /* Header */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid var(--border);
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            background-color: var(--success);
-            border-radius: 50%;
-            box-shadow: 0 0 10px var(--success);
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
-        }
+        /* Service List */
+        .service-list { list-style: none; padding: 0; margin: 0; }
+        .service-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; }
+        .service-item:last-child { border-bottom: none; }
+        .service-name { font-weight: bold; font-size: 14px; }
+        .service-status { font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+        .status-up { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
+        .status-down { background: rgba(248, 113, 113, 0.2); color: #f87171; }
         
-        /* Buttons */
-        .btn {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: all 0.2s;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
-        }
-        .btn:active {
-            transform: translateY(0);
-        }
-        .btn:disabled {
-            background: #475569;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* Cards */
-        .card-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            border: 1px solid var(--border);
-            transition: border-color 0.3s;
-        }
-        .card:hover {
-            border-color: var(--accent);
-        }
-        .card h3 {
-            margin-top: 0;
-            color: #94a3b8;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        .metric {
-            font-size: 28px;
-            font-weight: bold;
-            color: var(--accent);
-            margin: 10px 0;
-        }
-        .sub-text {
-            font-size: 12px;
-            color: #64748b;
-        }
-
-        /* Progress Bar */
-        .progress-bg {
-            background: #334155;
-            height: 8px;
-            border-radius: 4px;
-            overflow: hidden;
-            margin-top: 10px;
-        }
-        .progress-fill {
-            height: 100%;
-            background: var(--accent);
-            width: 0%;
-            transition: width 0.5s ease, background-color 0.3s;
-        }
-        .progress-fill.high {
-            background: var(--danger);
-        }
-
-        /* Logs */
-        .log-window {
-            background: #000;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            height: 400px;
-            overflow-y: auto;
-            padding: 15px;
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 13px;
-            color: #a5b4fc;
-            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.2);
-        }
-        .log-entry {
-            margin-bottom: 6px;
-            border-bottom: 1px solid #1e293b;
-            padding-bottom: 4px;
-            word-break: break-all;
-        }
-        .log-time {
-            color: #64748b;
-            margin-right: 10px;
-            user-select: none;
-        }
-        
-        /* Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
@@ -192,6 +69,12 @@
                 <div class="progress-bg"><div class="progress-fill" id="disk-bar"></div></div>
                 <div class="sub-text" id="disk-detail">正在获取...</div>
             </div>
+            <div class="card">
+                <h3>应用监控</h3>
+                <ul class="service-list" id="service-list">
+                    <li class="sub-text">暂无配置...</li>
+                </ul>
+            </div>
         </div>
 
         <h3>📜 实时运行日志</h3>
@@ -217,6 +100,21 @@
                 const diskBar = document.getElementById('disk-bar');
                 diskBar.style.width = data.disk_pct + '%';
                 if(data.disk_pct > 85) diskBar.classList.add('high'); else diskBar.classList.remove('high');
+
+                // 更新服务列表
+                const svcList = document.getElementById('service-list');
+                if (data.services && data.services.length > 0) {
+                    svcList.innerHTML = data.services.map(s => `
+                        <li class="service-item">
+                            <span class="service-name">${s.Name}</span>
+                            <span class="service-status ${s.Success ? 'status-up' : 'status-down'}">
+                                ${s.Success ? 'UP ' + s.Latency : 'DOWN'}
+                            </span>
+                        </li>
+                    `).join('');
+                } else {
+                    svcList.innerHTML = '<li class="sub-text">未配置 http_rules</li>';
+                }
             });
         }
 
