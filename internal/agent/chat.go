@@ -25,6 +25,7 @@ func InitClient() {
 	Client = openai.NewClientWithConfig(cfg)
 }
 
+// 在 v1.36.1 中，Function 字段是指针，所以这里必须保留 &
 var Tools = []openai.Tool{
 	{
 		Type: openai.ToolTypeFunction,
@@ -76,6 +77,7 @@ func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompleti
 	})
 }
 
+// ProcessAgentStepForWeb Web 模式专用
 func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback func(string)) (openai.ChatCompletionMessage, bool) {
 	ctx := context.Background()
 	
@@ -105,11 +107,9 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 					continue
 				}
 
-				
 				if utils.IsReadOnlyCommand(cmdStr) {
 					// logCallback("(自动执行...)")
 				} else {
-					// 如果想在 Web 上也支持修改，需要更复杂的 WebSocket 交互协议
 					logCallback("⚠️ Web模式暂不支持交互式修改命令，已跳过")
 					addToolOutput(msgs, toolCall.ID, "User denied (Web mode safe guard).")
 					continue
@@ -117,7 +117,6 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 
 				output := utils.ExecuteShell(cmdStr)
 				if strings.TrimSpace(output) == "" { output = "(No output)" }
-				// logCallback("✔ 完成")
 				addToolOutput(msgs, toolCall.ID, output)
 			}
 		}

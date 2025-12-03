@@ -6,7 +6,7 @@ require (
 	github.com/charmbracelet/glamour v0.6.0
 	github.com/chzyer/readline v1.5.1
 	github.com/gorilla/websocket v1.5.1
-	github.com/sashabaranov/go-openai v1.17.9
+	github.com/sashabaranov/go-openai v1.36.1
 	github.com/spf13/cobra v1.8.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
