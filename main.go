@@ -305,7 +305,8 @@ func runStatusMode(cmd *cobra.Command, args []string) {
 
 func sendSystemStatus() {
 	hostname := getHostname()
-	ip := strings.TrimSpace(executeShell("hostname -I | awk '{print $1}'"))
+	// [修复] 使用 ip route 获取真实 IP，兼容 Alpine/Docker
+	ip := strings.TrimSpace(executeShell("ip route get 1 | awk '{print $7; exit}'"))
 	uptime := strings.TrimSpace(executeShell("uptime -p"))
 	memInfo := strings.TrimSpace(executeShell("free -m | awk 'NR==2{printf \"%.1f%% (已用 %sM / 总计 %sM)\", $3/$2*100, $3, $2}'"))
 	diskInfo := strings.TrimSpace(executeShell("df -h / | awk 'NR==2 {print $5 \" (剩余 \" $4 \")\"}'"))
@@ -363,21 +364,17 @@ func performPatrol() {
 	webLog("正在执行系统巡检...")
 	var anomalies []string
 
-	// 1. 磁盘
 	if out := executeShell("df -h | grep -vE '^Filesystem|tmpfs|cdrom|efivarfs|overlay' | awk 'int($5) > 85 {print $0}'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
 		anomalies = append(anomalies, "**磁盘告警**:\n```\n"+strings.TrimSpace(out)+"\n```")
 	}
-	// 2. 负载
 	if out := executeShell("uptime | awk -F'load average:' '{ print $2 }' | awk '{ if ($1 > 4.0) print $0 }'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
 		anomalies = append(anomalies, "**高负载**:\n```\n"+strings.TrimSpace(out)+"\n```")
 	}
-	// 3. OOM
 	dmesgOut := executeShell("dmesg | grep -i 'out of memory' | tail -n 5")
 	if !strings.Contains(dmesgOut, "Operation not permitted") && !strings.Contains(dmesgOut, "不允许的操作") && strings.TrimSpace(dmesgOut) != "" && !strings.Contains(dmesgOut, "exit status") {
 		anomalies = append(anomalies, "**OOM日志**:\n```\n"+strings.TrimSpace(dmesgOut)+"\n```")
 	}
 	
-	// 4. 僵尸进程 [极致智能修复版]
 	rawZombies := executeShell("ps -A -o stat,ppid,pid,cmd | awk '$1 ~ /^[Zz]/'")
 	if strings.TrimSpace(rawZombies) != "" && !strings.Contains(rawZombies, "exit status") {
 		detailZombie := "STAT    PPID     PID CMD\n" + rawZombies
@@ -399,7 +396,6 @@ func performPatrol() {
 func analyzeWithAI(issue string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	
 	sysPrompt := `你是一个紧急故障响应专家。
 规则：
 1. **极度简练**：只输出核心原因和一条修复命令。
@@ -409,7 +405,6 @@ func analyzeWithAI(issue string) string {
    - 输入数据包含表头：STAT PPID PID CMD
    - **PPID (第二列)** 是父进程 ID。
    - 修复命令格式：kill -9 <PPID>`
-   
 	resp, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: DefaultModel, Messages: []openai.ChatCompletionMessage{{Role: "system", Content: sysPrompt}, {Role: "user", Content: issue}}, Temperature: 0.1,
 	})
@@ -509,10 +504,9 @@ func isReadOnlyCommand(cmd string) bool {
 	return false
 }
 
-// [修复] 移除 Setpgid 以兼容 Windows 编译
 func executeShell(c string) string {
 	cmd := exec.Command("bash", "-c", c)
-	// cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // 已移除，解决 Windows 编译报错
+	// 移除了 Setpgid 以兼容 Windows 编译，但在 Docker/Linux 中依然正常工作
 	out, err := cmd.CombinedOutput()
 	res := string(out)
 	if err != nil { if len(res) > 0 { res += fmt.Sprintf("\n(Command failed: %v)", err) } else { res = fmt.Sprintf("(Command failed: %v)", err) } }
