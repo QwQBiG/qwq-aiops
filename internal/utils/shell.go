@@ -6,17 +6,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"qwq/internal/security"
 	"strings"
 	"syscall"
 	"time"
 )
 
-
 const CommandTimeout = 60 * time.Second
 
-// ExecuteShell 执行 Shell 命令 (带超时保护)
 func ExecuteShell(c string) string {
-	// 使用 Context 控制超时
 	ctx, cancel := context.WithTimeout(context.Background(), CommandTimeout)
 	defer cancel()
 
@@ -26,7 +24,6 @@ func ExecuteShell(c string) string {
 	out, err := cmd.CombinedOutput()
 	res := string(out)
 
-	// 区分是超时还是普通错误
 	if ctx.Err() == context.DeadlineExceeded {
 		res += "\n(Command timed out after 60s)"
 	} else if err != nil {
@@ -36,7 +33,6 @@ func ExecuteShell(c string) string {
 			res = fmt.Sprintf("(Command failed: %v)", err)
 		}
 	}
-
 	if len(res) > 4000 {
 		res = res[:4000] + "\n...(Output truncated)"
 	}
@@ -44,13 +40,7 @@ func ExecuteShell(c string) string {
 }
 
 func IsCommandSafe(c string) bool {
-	dangerous := []string{"rm -rf", "mkfs", ":(){:|:&};:", "> /dev/sda", "dd if=/dev/zero"}
-	for _, d := range dangerous {
-		if strings.Contains(c, d) {
-			return false
-		}
-	}
-	return true
+	return security.CheckRisk(c) != security.RiskCritical
 }
 
 func IsReadOnlyCommand(cmd string) bool {
@@ -71,12 +61,33 @@ func IsReadOnlyCommand(cmd string) bool {
 	return false
 }
 
-func ConfirmExecution() bool {
-	fmt.Print("\033[33m[?] 这是一个修改操作，确认执行? (Y/n): \033[0m")
+func ConfirmExecution(cmd string) bool {
+	risk := security.CheckRisk(cmd)
+	switch risk {
+	case security.RiskLow:
+		return true
+	case security.RiskMedium:
+		fmt.Printf("\n\033[33m⚠️  [中风险] 这是一个修改操作: %s\033[0m\n", cmd)
+		fmt.Print("确认执行? (y/N): ")
+	case security.RiskHigh:
+		fmt.Printf("\n\033[31m🔥 [高风险] 这是一个危险操作: %s\033[0m\n", cmd)
+		fmt.Print("确认执行? (输入 'yes' 确认): ")
+	case security.RiskCritical:
+		code := security.GenerateVerifyCode()
+		fmt.Printf("\n\033[41;37m💀 [极高风险] 毁灭性操作警告: %s \033[0m\n", cmd)
+		fmt.Printf("请输入验证码 \033[1;33m%s\033[0m 以确认: ", code)
+		reader := bufio.NewReader(os.Stdin)
+		input, _ := reader.ReadString('\n')
+		return strings.TrimSpace(input) == code
+	}
+
 	reader := bufio.NewReader(os.Stdin)
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(strings.ToLower(input))
-	return input == "" || input == "y" || input == "yes"
+	if risk == security.RiskHigh {
+		return input == "yes"
+	}
+	return input == "y" || input == "yes"
 }
 
 func GetHostname() string {

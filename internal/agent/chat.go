@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"qwq/internal/config"
+	"qwq/internal/security"
 	"qwq/internal/utils"
 	"strings"
 	"time"
@@ -25,7 +26,6 @@ func InitClient() {
 	Client = openai.NewClientWithConfig(cfg)
 }
 
-// 在 v1.36.1 中，Function 字段是指针，所以这里必须保留 &
 var Tools = []openai.Tool{
 	{
 		Type: openai.ToolTypeFunction,
@@ -48,6 +48,7 @@ func AnalyzeWithAI(issue string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	safeIssue := security.Redact(issue)
 	knowledgePart := ""
 	if config.CachedKnowledge != "" {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
@@ -62,7 +63,7 @@ func AnalyzeWithAI(issue string) string {
 %s`, knowledgePart)
 
 	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model: DefaultModel, Messages: []openai.ChatCompletionMessage{{Role: "system", Content: sysPrompt}, {Role: "user", Content: issue}}, Temperature: 0.1,
+		Model: DefaultModel, Messages: []openai.ChatCompletionMessage{{Role: "system", Content: sysPrompt}, {Role: "user", Content: safeIssue}}, Temperature: 0.1,
 	})
 	if err != nil {
 		return "AI 连接失败: " + err.Error()
@@ -70,17 +71,14 @@ func AnalyzeWithAI(issue string) string {
 	return resp.Choices[0].Message.Content
 }
 
-// ProcessAgentStep CLI 模式使用
 func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompletionMessage, bool) {
 	return ProcessAgentStepForWeb(msgs, func(log string) {
 		fmt.Println(log)
 	})
 }
 
-// ProcessAgentStepForWeb Web 模式专用
 func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback func(string)) (openai.ChatCompletionMessage, bool) {
 	ctx := context.Background()
-	
 	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{Model: DefaultModel, Messages: *msgs, Tools: Tools, Temperature: 0.1})
 	if err != nil {
 		logCallback(fmt.Sprintf("API Error: %v", err))
@@ -108,8 +106,9 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 				}
 
 				if utils.IsReadOnlyCommand(cmdStr) {
-					// logCallback("(自动执行...)")
+					// Auto run
 				} else {
+					// Web mode default deny for write ops unless interactive
 					logCallback("⚠️ Web模式暂不支持交互式修改命令，已跳过")
 					addToolOutput(msgs, toolCall.ID, "User denied (Web mode safe guard).")
 					continue

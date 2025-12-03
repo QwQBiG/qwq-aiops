@@ -10,31 +10,21 @@
         :root { --bg: #0f172a; --card-bg: #1e293b; --text: #e2e8f0; --accent: #38bdf8; --success: #4ade80; --danger: #f87171; --border: #334155; }
         body { background-color: var(--bg); color: var(--text); font-family: 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
         .container { max-width: 1400px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; height: 100%; }
-        
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
         .header h1 { margin: 0; font-size: 22px; display: flex; align-items: center; gap: 10px; }
         .status-dot { width: 10px; height: 10px; background-color: var(--success); border-radius: 50%; box-shadow: 0 0 10px var(--success); animation: pulse 2s infinite; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(74, 222, 128, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); } }
-        
         .btn { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: all 0.2s; }
         .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
         .btn:disabled { background: #475569; cursor: not-allowed; transform: none; }
-
-        /* Layout */
         .main-layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; flex: 1; min-height: 0; }
         .left-panel { display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
         .right-panel { display: flex; flex-direction: column; gap: 20px; min-height: 0; }
-
-        /* Cards */
         .card { background: var(--card-bg); border-radius: 12px; padding: 15px; border: 1px solid var(--border); display: flex; flex-direction: column; }
         .card h3 { margin: 0 0 10px 0; color: #94a3b8; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
         .metric { font-size: 24px; font-weight: bold; color: var(--accent); }
         .sub-text { font-size: 11px; color: #64748b; margin-top: 5px; }
-
-        /* Charts */
         .chart-container { height: 200px; width: 100%; }
-
-        /* Chat Box */
         .chat-box { flex: 1; display: flex; flex-direction: column; background: #000; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
         .chat-messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
         .message { max-width: 80%; padding: 10px 15px; border-radius: 10px; font-size: 14px; line-height: 1.5; }
@@ -44,15 +34,11 @@
         .chat-input-area { padding: 15px; background: var(--card-bg); border-top: 1px solid var(--border); display: flex; gap: 10px; }
         .chat-input { flex: 1; background: #0f172a; border: 1px solid var(--border); color: white; padding: 10px; border-radius: 6px; outline: none; }
         .chat-input:focus { border-color: var(--accent); }
-
-        /* Service List */
         .service-list { list-style: none; padding: 0; margin: 0; }
         .service-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #334155; font-size: 13px; }
         .service-status { padding: 2px 6px; border-radius: 4px; font-size: 11px; }
         .status-up { background: rgba(74, 222, 128, 0.1); color: #4ade80; }
         .status-down { background: rgba(248, 113, 113, 0.1); color: #f87171; }
-
-        /* Markdown Styles */
         .msg-ai pre { background: #0f172a; padding: 10px; border-radius: 6px; overflow-x: auto; }
         .msg-ai code { font-family: 'Consolas', monospace; }
     </style>
@@ -63,9 +49,7 @@
             <h1><div class="status-dot"></div> qwq AIOps Pro</h1>
             <button class="btn" onclick="triggerPatrol()">⚡ 立即巡检</button>
         </div>
-
         <div class="main-layout">
-            <!-- Left Sidebar: Metrics -->
             <div class="left-panel">
                 <div class="card">
                     <h3>CPU 趋势</h3>
@@ -77,13 +61,9 @@
                 </div>
                 <div class="card">
                     <h3>应用监控</h3>
-                    <ul class="service-list" id="service-list">
-                        <li class="sub-text">加载中...</li>
-                    </ul>
+                    <ul class="service-list" id="service-list"><li class="sub-text">加载中...</li></ul>
                 </div>
             </div>
-
-            <!-- Right Panel: Chat & Logs -->
             <div class="right-panel">
                 <div class="chat-box">
                     <div class="chat-messages" id="chat-messages">
@@ -97,9 +77,7 @@
             </div>
         </div>
     </div>
-
     <script>
-        // --- ECharts Init ---
         const cpuChart = echarts.init(document.getElementById('chart-cpu'));
         const memChart = echarts.init(document.getElementById('chart-mem'));
         const chartOption = {
@@ -111,27 +89,25 @@
         cpuChart.setOption({ ...chartOption, series: [{ ...chartOption.series[0], itemStyle: { color: '#38bdf8' } }] });
         memChart.setOption({ ...chartOption, series: [{ ...chartOption.series[0], itemStyle: { color: '#4ade80' } }] });
 
-        const history = { time: [], cpu: [], mem: [] };
-
-        // --- Data Fetching ---
         function updateStats() {
             fetch('/api/stats').then(r => {
                 if(r.status === 401) window.location.reload();
                 return r.json();
-            }).then(data => {
-                // Update Charts
-                if (history.time.length > 20) { history.time.shift(); history.cpu.shift(); history.mem.shift(); }
-                history.time.push(data.time);
-                history.cpu.push(parseFloat(data.load));
-                history.mem.push(parseFloat(data.mem_pct));
+            }).then(history => {
+                if (!history || history.length === 0) return;
+                
+                const latest = history[history.length - 1];
 
-                cpuChart.setOption({ xAxis: { data: history.time }, series: [{ data: history.cpu }] });
-                memChart.setOption({ xAxis: { data: history.time }, series: [{ data: history.mem }] });
+                const times = history.map(h => h.time);
+                const cpus = history.map(h => parseFloat(h.load));
+                const mems = history.map(h => parseFloat(h.mem_pct));
 
-                // Update Services
+                cpuChart.setOption({ xAxis: { data: times }, series: [{ data: cpus }] });
+                memChart.setOption({ xAxis: { data: times }, series: [{ data: mems }] });
+
                 const svcList = document.getElementById('service-list');
-                if (data.services && data.services.length > 0) {
-                    svcList.innerHTML = data.services.map(s => `
+                if (latest.services && latest.services.length > 0) {
+                    svcList.innerHTML = latest.services.map(s => `
                         <li class="service-item">
                             <span class="service-name">${s.Name}</span>
                             <span class="service-status ${s.Success ? 'status-up' : 'status-down'}">
@@ -152,16 +128,13 @@
         setInterval(updateStats, 2000);
         updateStats();
 
-        // --- WebSocket Chat ---
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(wsProtocol + '//' + window.location.host + '/ws/chat');
         const chatBox = document.getElementById('chat-messages');
 
         ws.onmessage = function(event) {
             const data = JSON.parse(event.data);
-            if (data.type === 'status') {
-                // Optional: Show status indicator
-            } else if (data.type === 'log') {
+            if (data.type === 'log') {
                 appendMsg(data.content, 'msg-log');
             } else if (data.type === 'answer') {
                 appendMsg(marked.parse(data.content), 'msg-ai');
