@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"qwq/internal/agent"
 	"qwq/internal/config"
+	"qwq/internal/logger" // [新增]
 	"qwq/internal/server"
 	"qwq/internal/utils"
 	"runtime"
@@ -29,11 +30,13 @@ func main() {
 		Use:   "qwq",
 		Short: "Advanced AIOps Agent",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// 初始化配置
+			// 1. 初始化配置
 			if err := config.Init(configPath); err != nil {
 				return err
 			}
-			// 清洗 Webhook
+			// 2. [新增] 初始化日志系统 (写入 qwq.log)
+			logger.Init("qwq.log", config.GlobalConfig.DebugMode)
+
 			if config.GlobalConfig.DingTalkWebhook != "" {
 				config.GlobalConfig.DingTalkWebhook = strings.ReplaceAll(config.GlobalConfig.DingTalkWebhook, "\\", "")
 			}
@@ -42,10 +45,7 @@ func main() {
 		},
 	}
 
-	// 绑定命令行参数
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to config file (e.g., config.json)")
-	
-	// 依然保留这些 Flag，方便临时覆盖
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to config file")
 	rootCmd.PersistentFlags().StringVar(&config.GlobalConfig.DingTalkWebhook, "webhook", "", "DingTalk Webhook URL")
 	rootCmd.PersistentFlags().StringVar(&config.GlobalConfig.WebUser, "user", "", "Web Dashboard Username")
 	rootCmd.PersistentFlags().StringVar(&config.GlobalConfig.WebPassword, "password", "", "Web Dashboard Password")
@@ -66,14 +66,13 @@ func main() {
 func runWebMode(cmd *cobra.Command, args []string) {
 	server.TriggerPatrolFunc = performPatrol
 	server.TriggerStatusFunc = sendSystemStatus
-
 	go runPatrolLoop(8 * time.Hour)
 	go sendSystemStatus()
 	server.Start(":8899")
 }
 
 func runPatrolMode(cmd *cobra.Command, args []string) {
-	server.WebLog("巡检模式启动 (无 Web 面板)")
+	logger.Info("巡检模式启动 (无 Web 面板)")
 	go runPatrolLoop(8 * time.Hour)
 	waitForShutdown()
 }
@@ -123,8 +122,6 @@ func runChatMode(cmd *cobra.Command, args []string) {
 	}
 }
 
-// --- 辅助逻辑 ---
-
 func waitForShutdown() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -147,7 +144,7 @@ func runPatrolLoop(interval time.Duration) {
 }
 
 func performPatrol() {
-	server.WebLog("正在执行系统巡检...")
+	logger.Info("正在执行系统巡检...")
 	var anomalies []string
 
 	if out := utils.ExecuteShell("df -h | grep -vE '^Filesystem|tmpfs|cdrom|efivarfs|overlay' | awk 'int($5) > 85 {print $0}'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
@@ -166,15 +163,24 @@ func performPatrol() {
 		anomalies = append(anomalies, "**僵尸进程**:\n```\n"+strings.TrimSpace(detailZombie)+"\n```")
 	}
 
+	// 执行自定义规则
+	for _, rule := range config.GlobalConfig.PatrolRules {
+		out := utils.ExecuteShell(rule.Command)
+		if strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
+			logger.Info(fmt.Sprintf("⚠️ 触发自定义规则: %s", rule.Name))
+			anomalies = append(anomalies, fmt.Sprintf("**%s**:\n```\n%s\n```", rule.Name, strings.TrimSpace(out)))
+		}
+	}
+
 	if len(anomalies) > 0 {
 		report := strings.Join(anomalies, "\n")
-		server.WebLog("🚨 发现异常，正在请求 AI 分析...")
+		logger.Info("🚨 发现异常，正在请求 AI 分析...")
 		analysis := agent.AnalyzeWithAI(report)
 		alertMsg := fmt.Sprintf("🚨 **系统告警** [%s]\n\n%s\n\n💡 **处理建议**:\n%s", utils.GetHostname(), report, analysis)
 		sendDingTalk(alertMsg, "系统告警")
-		server.WebLog("告警已推送")
+		logger.Info("告警已推送")
 	} else {
-		server.WebLog("✔ 系统健康")
+		logger.Info("✔ 系统健康")
 	}
 }
 
@@ -204,7 +210,7 @@ func sendSystemStatus() {
 `, hostname, ip, uptime, loadInfo, memInfo, diskInfo,
 		strings.TrimSpace(utils.ExecuteShell("netstat -ant | grep ESTABLISHED | wc -l")))
 	sendDingTalk(report, "服务器状态日报")
-	server.WebLog("✅ 健康日报已发送")
+	logger.Info("✅ 健康日报已发送")
 }
 
 func sendDingTalk(msg string, title string) {

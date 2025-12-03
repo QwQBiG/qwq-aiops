@@ -2,36 +2,47 @@ package utils
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 )
 
-// ExecuteShell 执行 Shell 命令并返回结果
+
+const CommandTimeout = 60 * time.Second
+
+// ExecuteShell 执行 Shell 命令 (带超时保护)
 func ExecuteShell(c string) string {
-	cmd := exec.Command("bash", "-c", c)
-	// 移除 Setpgid 以兼容 Windows 编译，Linux/Docker 下依然正常
-	cmd.SysProcAttr = &syscall.SysProcAttr{} 
-	
+	// 使用 Context 控制超时
+	ctx, cancel := context.WithTimeout(context.Background(), CommandTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bash", "-c", c)
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+
 	out, err := cmd.CombinedOutput()
 	res := string(out)
-	if err != nil {
+
+	// 区分是超时还是普通错误
+	if ctx.Err() == context.DeadlineExceeded {
+		res += "\n(Command timed out after 60s)"
+	} else if err != nil {
 		if len(res) > 0 {
 			res += fmt.Sprintf("\n(Command failed: %v)", err)
 		} else {
 			res = fmt.Sprintf("(Command failed: %v)", err)
 		}
 	}
-	// 截断过长的输出
+
 	if len(res) > 4000 {
 		res = res[:4000] + "\n...(Output truncated)"
 	}
 	return res
 }
 
-// IsCommandSafe 检查命令是否包含高危操作
 func IsCommandSafe(c string) bool {
 	dangerous := []string{"rm -rf", "mkfs", ":(){:|:&};:", "> /dev/sda", "dd if=/dev/zero"}
 	for _, d := range dangerous {
@@ -42,7 +53,6 @@ func IsCommandSafe(c string) bool {
 	return true
 }
 
-// IsReadOnlyCommand 检查是否为只读命令（允许自动执行）
 func IsReadOnlyCommand(cmd string) bool {
 	safeKeywords := []string{
 		"ls", "cat", "head", "tail", "grep", "find", "pwd", "echo", "whoami", "id",
@@ -61,7 +71,6 @@ func IsReadOnlyCommand(cmd string) bool {
 	return false
 }
 
-// ConfirmExecution 请求用户确认
 func ConfirmExecution() bool {
 	fmt.Print("\033[33m[?] 这是一个修改操作，确认执行? (Y/n): \033[0m")
 	reader := bufio.NewReader(os.Stdin)
@@ -70,7 +79,6 @@ func ConfirmExecution() bool {
 	return input == "" || input == "y" || input == "yes"
 }
 
-// GetHostname 获取主机名
 func GetHostname() string {
 	h, _ := os.Hostname()
 	return h

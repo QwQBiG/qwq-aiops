@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"qwq/internal/config"
+	"qwq/internal/logger"
 	"qwq/internal/utils"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -17,23 +17,22 @@ import (
 var content embed.FS
 
 var (
-	LogBuffer []string
-	LogMutex  sync.Mutex
-	// 外部注入的回调函数
+	// LogBuffer 和 LogMutex 已移除，改用 logger 模块
 	TriggerPatrolFunc func()
 	TriggerStatusFunc func()
 )
 
 func Start(port string) {
+	// 日志初始化已在 main.go 完成
+
 	http.HandleFunc("/", basicAuth(handleIndex))
 	http.HandleFunc("/api/logs", basicAuth(handleLogs))
 	http.HandleFunc("/api/stats", basicAuth(handleStats))
 	http.HandleFunc("/api/trigger", basicAuth(handleTrigger))
 
-	WebLog("🚀 qwq Dashboard started at http://localhost" + port)
-	// [修改] 使用 GlobalConfig
+	logger.Info("🚀 qwq Dashboard started at http://localhost" + port)
 	if config.GlobalConfig.WebUser != "" {
-		WebLog("🔒 安全模式已开启 (Basic Auth)")
+		logger.Info("🔒 安全模式已开启 (Basic Auth)")
 	}
 
 	if err := http.ListenAndServe(port, nil); err != nil {
@@ -43,7 +42,6 @@ func Start(port string) {
 
 func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// [修改] 使用 GlobalConfig
 		userCfg := config.GlobalConfig.WebUser
 		passCfg := config.GlobalConfig.WebPassword
 
@@ -67,9 +65,8 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogs(w http.ResponseWriter, r *http.Request) {
-	LogMutex.Lock()
-	defer LogMutex.Unlock()
-	json.NewEncoder(w).Encode(LogBuffer)
+	// 从 logger 模块获取日志
+	json.NewEncoder(w).Encode(logger.GetWebLogs())
 }
 
 func handleStats(w http.ResponseWriter, r *http.Request) {
@@ -105,14 +102,7 @@ func handleTrigger(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("指令已发送：正在后台执行巡检和汇报..."))
 }
 
+// WebLog 辅助函数现在直接调用 logger.Info
 func WebLog(msg string) {
-	LogMutex.Lock()
-	defer LogMutex.Unlock()
-	ts := time.Now().Format("15:04:05")
-	logEntry := fmt.Sprintf("[%s] %s", ts, msg)
-	fmt.Println(logEntry)
-	LogBuffer = append(LogBuffer, logEntry)
-	if len(LogBuffer) > 100 {
-		LogBuffer = LogBuffer[1:]
-	}
+	logger.Info(msg)
 }
