@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"qwq/internal/agent"
@@ -32,7 +35,6 @@ func main() {
 			if err := config.Init(configPath); err != nil {
 				return err
 			}
-			// 初始化日志
 			logger.Init("qwq.log", config.GlobalConfig.DebugMode)
 			
 			if config.GlobalConfig.DingTalkWebhook != "" {
@@ -145,7 +147,6 @@ func performPatrol() {
 	logger.Info("正在执行系统巡检...")
 	var anomalies []string
 
-	// 1. 基础检查
 	if out := utils.ExecuteShell("df -h | grep -vE '^Filesystem|tmpfs|cdrom|efivarfs|overlay' | awk 'int($5) > 85 {print $0}'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
 		anomalies = append(anomalies, "**磁盘告警**:\n```\n"+strings.TrimSpace(out)+"\n```")
 	}
@@ -162,7 +163,6 @@ func performPatrol() {
 		anomalies = append(anomalies, "**僵尸进程**:\n```\n"+strings.TrimSpace(detailZombie)+"\n```")
 	}
 
-	// 2. 自定义 Shell 规则
 	for _, rule := range config.GlobalConfig.PatrolRules {
 		out := utils.ExecuteShell(rule.Command)
 		if strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
@@ -171,7 +171,6 @@ func performPatrol() {
 		}
 	}
 
-	// 3. HTTP 监控检查
 	httpResults := monitor.RunChecks()
 	for _, res := range httpResults {
 		if !res.Success {
@@ -185,7 +184,7 @@ func performPatrol() {
 		logger.Info("🚨 发现异常，正在请求 AI 分析...")
 		analysis := agent.AnalyzeWithAI(report)
 		alertMsg := fmt.Sprintf("🚨 **系统告警** [%s]\n\n%s\n\n💡 **处理建议**:\n%s", utils.GetHostname(), report, analysis)
-		notify.Send("系统告警", alertMsg) // 改用 notify 模块
+		notify.Send("系统告警", alertMsg)
 		logger.Info("告警已推送")
 	} else {
 		logger.Info("✔ 系统健康")
@@ -219,6 +218,13 @@ func sendSystemStatus() {
 `, hostname, ip, uptime, loadInfo, memInfo, diskInfo,
 		strings.TrimSpace(utils.ExecuteShell("netstat -ant | grep ESTABLISHED | wc -l")))
 	
-	notify.Send("服务器状态日报", report) // 改用 notify 模块
+	notify.Send("服务器状态日报", report)
 	logger.Info("✅ 健康日报已发送")
+}
+
+func sendDingTalk(msg string, title string) {
+	if config.GlobalConfig.DingTalkWebhook == "" { return }
+	payload := map[string]interface{}{"msgtype": "markdown", "markdown": map[string]string{"title": title, "text": msg}}
+	jsonData, _ := json.Marshal(payload)
+	http.Post(config.GlobalConfig.DingTalkWebhook, "application/json", bytes.NewBuffer(jsonData))
 }

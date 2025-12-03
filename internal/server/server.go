@@ -5,15 +5,14 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"os"
 	"net/http"
 	"qwq/internal/config"
 	"qwq/internal/logger"
 	"qwq/internal/monitor"
-	"qwq/internal/notify"
 	"qwq/internal/utils"
 	"strings"
 	"sync"
-	"time"
 )
 
 //go:embed static/index.html
