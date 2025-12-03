@@ -1,18 +1,19 @@
-# 1. 编译阶段：升级到 1.23 以匹配你的 go.mod
+# 1. 编译阶段
 FROM golang:1.23-alpine AS builder
 
 # 设置工作目录
 WORKDIR /app
 
-# 设置国内代理
+# 设置国内代理 (虽然在 GitHub Actions 里可能用不到，但保留无妨)
 ENV GOPROXY=https://goproxy.cn,direct
 
-# 复制依赖文件并下载
-COPY go.mod go.sum ./
+# 直接复制所有文件（包括源代码）
+COPY . .
+
+# 源代码都在
 RUN go mod tidy
 
-# 复制源码并编译
-COPY . .
+# 编译
 RUN go build -o qwq main.go
 
 # -------------------------------------------
