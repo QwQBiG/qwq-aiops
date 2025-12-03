@@ -20,7 +20,6 @@ const (
 var Client *openai.Client
 
 func InitClient() {
-	// [修改] 使用 GlobalConfig
 	cfg := openai.DefaultConfig(config.GlobalConfig.ApiKey)
 	cfg.BaseURL = DefaultBaseURL
 	Client = openai.NewClientWithConfig(cfg)
@@ -70,13 +69,19 @@ func AnalyzeWithAI(issue string) string {
 	return resp.Choices[0].Message.Content
 }
 
-// ProcessAgentStep 处理 Chat 模式的单步逻辑
+// ProcessAgentStep CLI 模式使用
 func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompletionMessage, bool) {
+	return ProcessAgentStepForWeb(msgs, func(log string) {
+		fmt.Println(log)
+	})
+}
+
+func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback func(string)) (openai.ChatCompletionMessage, bool) {
 	ctx := context.Background()
-	fmt.Print("\033[33m🤖 思考中...\033[0m\r")
+	
 	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{Model: DefaultModel, Messages: *msgs, Tools: Tools, Temperature: 0.1})
 	if err != nil {
-		fmt.Printf("\nAPI Error: %v\n", err)
+		logCallback(fmt.Sprintf("API Error: %v", err))
 		return openai.ChatCompletionMessage{}, false
 	}
 	msg := resp.Choices[0].Message
@@ -91,29 +96,28 @@ func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompleti
 				reason := args["reason"]
 				if cmdStr == "" { continue }
 
-				fmt.Printf("\n\033[36m⚡ 意图: %s\033[0m\n", reason)
-				fmt.Printf("\033[33m👉 命令: \033[1m%s\033[0m\n", cmdStr)
+				logCallback(fmt.Sprintf("⚡ 意图: %s", reason))
+				logCallback(fmt.Sprintf("👉 命令: %s", cmdStr))
 
 				if !utils.IsCommandSafe(cmdStr) {
-					fmt.Println("\033[31m[拦截] 高危命令\033[0m")
+					logCallback("❌ [拦截] 高危命令")
 					addToolOutput(msgs, toolCall.ID, "Error: Blocked.")
 					continue
 				}
 
+				
 				if utils.IsReadOnlyCommand(cmdStr) {
-					fmt.Println("\033[90m(自动执行查询命令...)\033[0m")
+					// logCallback("(自动执行...)")
 				} else {
-					if !utils.ConfirmExecution() {
-						fmt.Println("\033[90m已跳过\033[0m")
-						addToolOutput(msgs, toolCall.ID, "User denied.")
-						continue
-					}
+					// 如果想在 Web 上也支持修改，需要更复杂的 WebSocket 交互协议
+					logCallback("⚠️ Web模式暂不支持交互式修改命令，已跳过")
+					addToolOutput(msgs, toolCall.ID, "User denied (Web mode safe guard).")
+					continue
 				}
 
-				fmt.Print("\033[90m执行中...\033[0m")
 				output := utils.ExecuteShell(cmdStr)
 				if strings.TrimSpace(output) == "" { output = "(No output)" }
-				fmt.Printf("\r\033[32m✔ 完成\033[0m\n")
+				// logCallback("✔ 完成")
 				addToolOutput(msgs, toolCall.ID, output)
 			}
 		}
