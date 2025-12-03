@@ -32,13 +32,13 @@ qwq 是一个基于 Go 语言开发的轻量级 AIOps Agent。它利用大语言
 ## 🛠️ 安装指南
 
 ### 1. 环境要求
-- Linux (推荐 Ubuntu/CentOS) 或 macOS
+- Linux (推荐 Ubuntu) 或 macOS
 - Go 1.21+ (用于编译)
 - API Key: 硅基流动 (SiliconFlow) 或其他兼容 OpenAI 格式的 API Key。
 
 ### 2. 编译项目
 ```bash
-# 1. 克隆项目 (假设你已上传 GitHub)
+# 1. 克隆项目
 git clone https://github.com/your-username/qwq-aiops.git
 cd qwq-aiops
 
