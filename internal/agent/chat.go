@@ -29,13 +29,6 @@ func InitClient() {
 	Client = openai.NewClientWithConfig(cfg)
 }
 
-func getModelName() string {
-	if config.GlobalConfig.Model != "" {
-		return config.GlobalConfig.Model
-	}
-	return DefaultModel
-}
-
 var Tools = []openai.Tool{
 	{
 		Type: openai.ToolTypeFunction,
@@ -45,8 +38,8 @@ var Tools = []openai.Tool{
 			Parameters: json.RawMessage(`{
 				"type": "object",
 				"properties": {
-					"command": { "type": "string", "description": "The shell command" },
-					"reason": { "type": "string", "description": "The reason (in Chinese)" }
+					"command": { "type": "string", "description": "The shell command (e.g., 'ls -la', 'free -m', 'grep error log.txt')" },
+					"reason": { "type": "string", "description": "The reason for execution" }
 				},
 				"required": ["command", "reason"]
 			}`),
@@ -63,12 +56,13 @@ func AnalyzeWithAI(issue string) string {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个紧急故障响应专家。
-规则：
-1. **极度简练**：只输出核心原因和一条修复命令。
-2. **拒绝废话**：不要解释原理。
-3. **空数据防御**：如果输入只包含表头而没有数据，回答“误报”。
-4. **僵尸进程特判**：必须杀掉父进程(PPID)。
+	sysPrompt := fmt.Sprintf(`你是一个运行在 Linux 服务器上的高级运维 Agent。
+你的职责是分析系统异常并给出修复命令。
+
+【严格遵守以下规则】
+1. **禁止废话**：不要解释原理，不要打招呼。
+2. **极简输出**：只输出核心原因和一条修复命令。
+3. **僵尸进程特判**：必须杀掉父进程(PPID)。
 %s`, knowledgePart)
 
 	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
@@ -93,7 +87,6 @@ func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompleti
 
 func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback func(string)) (openai.ChatCompletionMessage, bool) {
 	ctx := context.Background()
-	
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	
@@ -149,4 +142,11 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 
 func addToolOutput(msgs *[]openai.ChatCompletionMessage, id, content string) {
 	*msgs = append(*msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleTool, Content: content, ToolCallID: id})
+}
+
+func getModelName() string {
+	if config.GlobalConfig.Model != "" {
+		return config.GlobalConfig.Model
+	}
+	return DefaultModel
 }

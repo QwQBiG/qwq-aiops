@@ -15,9 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-    "strconv"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/gorilla/websocket"
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -33,14 +31,12 @@ var (
 	TriggerStatusFunc func()
 	logFile           *os.File
 	
-	// 统计数据缓存与历史记录
 	statsCache struct {
 		sync.RWMutex
 		History []StatsPoint
 	}
 )
 
-// StatsPoint 单个时间点的数据
 type StatsPoint struct {
 	Time      string      `json:"time"`
 	Load      string      `json:"load"`
@@ -59,9 +55,6 @@ func Start(port string) {
 		fmt.Printf("无法创建日志文件: %v\n", err)
 	}
 
-	http.Handle("/metrics", promhttp.Handler())
-
-	// 启动后台采集协程
 	go collectStatsLoop()
 
 	http.HandleFunc("/", basicAuth(handleIndex))
@@ -80,16 +73,13 @@ func Start(port string) {
 	}
 }
 
-// 后台采集循环：每2秒采集一次，存入历史记录
 func collectStatsLoop() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		point := collectOnePoint()
-		
 		statsCache.Lock()
-		// 保留最近 60 个点 (约2分钟的高频数据，或者你可以改成更长)
 		statsCache.History = append(statsCache.History, point)
 		if len(statsCache.History) > 60 {
 			statsCache.History = statsCache.History[1:]
@@ -115,18 +105,7 @@ func collectOnePoint() StatsPoint {
 		diskAvail = diskParts[1]
 	}
 
-	// 注意：HTTP 检查比较耗时，这里每2秒跑一次可能太频繁
-	// 生产环境建议把 HTTP 检查单独开一个低频 Ticker
 	httpStatus := monitor.RunChecks()
-
-	loadFloat, _ := strconv.ParseFloat(load, 64)
-    diskPctFloat, _ := strconv.ParseFloat(diskPct, 64)
-    tcpStr := strings.TrimSpace(utils.ExecuteShell("netstat -ant | grep ESTABLISHED | wc -l"))
-    tcpFloat, _ := strconv.ParseFloat(tcpStr, 64)
-
-    monitor.UpdatePrometheusMetrics(loadFloat, memPct, diskPctFloat, tcpFloat)
-    
-    monitor.UpdateAppMetrics(httpStatus)
 
 	return StatsPoint{
 		Time:      time.Now().Format("15:04:05"),
@@ -170,12 +149,16 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 	if config.CachedKnowledge != "" {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
-	sysPrompt := fmt.Sprintf(`你是一个资深运维专家助手(qwq)。
-规则：
-1. 请用中文回答。
-2. **分步执行**：先获取信息，再执行下一步。
-3. **Web模式**：你现在运行在 Web 终端中。
-4. 如果是查询类命令（如 get, describe, logs, top, ps），请放心执行。
+	
+	sysPrompt := fmt.Sprintf(`你是一个运行在 Linux 服务器上的智能运维 Agent (qwq)。
+你的唯一职责是：**执行命令并返回结果**。
+
+【核心原则】
+1. **禁止教学**：当用户问“看看内存”、“查负载”时，**绝对不要**告诉用户怎么查（不要列出 Windows/Mac 的方法）。
+2. **立即行动**：必须立即调用 execute_shell_command 工具执行相应的 Linux 命令（如 free -m, top, df -h）。
+3. **拒绝废话**：不要解释命令的含义，直接给结果。
+4. **环境感知**：你就在 Linux 里，不要假设自己在外部。
+
 %s`, knowledgePart)
 
 	messages := []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: sysPrompt}}
@@ -213,15 +196,10 @@ func handleLogs(w http.ResponseWriter, r *http.Request) {
 func handleStats(w http.ResponseWriter, r *http.Request) {
 	statsCache.RLock()
 	defer statsCache.RUnlock()
-	
-	// 返回整个历史记录，前端可以一次性渲染出曲线
-	// 如果历史记录为空（刚启动），返回空数组
 	if len(statsCache.History) == 0 {
 		json.NewEncoder(w).Encode([]StatsPoint{})
 		return
 	}
-	
-	// 返回最近的数据
 	json.NewEncoder(w).Encode(statsCache.History)
 }
 

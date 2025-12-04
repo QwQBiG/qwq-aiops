@@ -1,4 +1,3 @@
-// qwq
 package main
 
 import (
@@ -11,7 +10,6 @@ import (
 	"qwq/internal/logger"
 	"qwq/internal/monitor"
 	"qwq/internal/notify"
-	"qwq/internal/security"
 	"qwq/internal/server"
 	"qwq/internal/utils"
 	"runtime"
@@ -96,33 +94,37 @@ func runStatusMode(cmd *cobra.Command, args []string) {
 	sendSystemStatus()
 }
 
-func runChatMode(cmd *cobra.Command, args []string) {
-	rl, _ := readline.NewEx(&readline.Config{Prompt: "\033[32mqwq > \033[0m", HistoryFile: "/tmp/qwq_history"})
-	defer rl.Close()
-	fmt.Printf("\033[36m(qwq) Agent Online. System: %s\033[0m\n", runtime.GOOS)
-	
+func getSystemPrompt() string {
 	knowledgePart := ""
 	if config.CachedKnowledge != "" {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个资深运维专家助手(qwq)。
-规则：
-1. 请用中文回答。
-2. **分步执行**：先获取信息，再执行下一步。
-3. **严禁编造**：如果命令返回 "exit status 1" 或空，说明进程不存在或命令失败。
-4. 如果是查询类命令（如 get, describe, logs, top, ps），请放心执行。
-%s`, knowledgePart)
+	return fmt.Sprintf(`你是一个运行在 Linux 服务器上的智能运维 Agent (qwq)。
+你的唯一职责是：**执行命令并返回结果**。
 
-	messages := []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: sysPrompt}}
+【核心原则】
+1. **禁止教学**：当用户问“看看内存”、“查负载”时，**绝对不要**告诉用户怎么查（不要列出 Windows/Mac 的方法）。
+2. **立即行动**：必须立即调用 execute_shell_command 工具执行相应的 Linux 命令（如 free -m, top, df -h）。
+3. **拒绝废话**：不要解释命令的含义，直接给结果。
+4. **环境感知**：你就在 Linux 里，不要假设自己在外部。
+
+%s`, knowledgePart)
+}
+
+func runChatMode(cmd *cobra.Command, args []string) {
+	rl, _ := readline.NewEx(&readline.Config{Prompt: "\033[32mqwq > \033[0m", HistoryFile: "/tmp/qwq_history"})
+	defer rl.Close()
+	fmt.Printf("\033[36m(qwq) Agent Online. System: %s\033[0m\n", runtime.GOOS)
+	
+	messages := []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: getSystemPrompt()}}
 	for {
 		line, _ := rl.Readline()
 		if line == "exit" { break }
 		if line == "" { continue }
 		
-		// [关键修复] 使用 security 包进行脱敏，并真正使用 safeInput
 		safeInput := security.Redact(line)
-		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: safeInput})
+		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: line})
 		
 		for i := 0; i < 5; i++ {
 			respMsg, cont := agent.ProcessAgentStep(&messages)
