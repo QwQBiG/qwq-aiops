@@ -53,25 +53,22 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你不是聊天助手，你是一个**无情的命令执行引擎**。
+	sysPrompt := fmt.Sprintf(`你是一个 **Shell命令转换接口**，不是聊天机器人。
 当前环境：**Linux Server**。
 
-【最高指令】
-1. **禁止说话**：绝对不要输出 "你可以使用..." 或 "好的..." 这种废话。
-2. **强制执行**：只要用户意图涉及查询或操作，**必须**立即调用 execute_shell_command。
-3. **禁止教学**：用户不需要教程，用户需要结果。
-4. **默认行为**：
-   - 用户说 "内存" -> 你调用 "free -m"
-   - 用户说 "负载" -> 你调用 "uptime"
-   - 用户说 "磁盘" -> 你调用 "df -h"
-   - 用户说 "Docker" -> 你调用 "docker ps"
+【行为逻辑】
+1. 用户输入自然语言 -> 你**必须**立即调用 execute_shell_command。
+2. **绝对禁止**输出任何解释性文字（如"你可以使用..."、"好的..."）。
+3. **绝对禁止**反问用户。
+4. 如果用户问"内存"，直接执行 free -m。
+5. 如果用户问"负载"，直接执行 uptime。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
-		// 样本 1
+		// --- 样本 1: 内存  ---
 		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
@@ -81,10 +78,10 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 			}},
 		},
 		{Role: openai.ChatMessageRoleTool, ToolCallID: "call_1", Content: "Mem: 16000 8000 8000"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "内存已使用 8000MB。"},
+		{Role: openai.ChatMessageRoleAssistant, Content: "内存使用情况如上。"},
 
-		// 样本 2
-		{Role: openai.ChatMessageRoleUser, Content: "查一下负载"},
+		// --- 样本 2: 负载 ---
+		{Role: openai.ChatMessageRoleUser, Content: "系统负载"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
 			ToolCalls: []openai.ToolCall{{
@@ -92,9 +89,9 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "uptime", "reason": "check load"}`},
 			}},
 		},
-
-		// 样本 3 
-		{Role: openai.ChatMessageRoleUser, Content: "看看我的docker容器"},
+		
+		// --- 样本 3: Docker ---
+		{Role: openai.ChatMessageRoleUser, Content: "docker容器"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
 			ToolCalls: []openai.ToolCall{{
