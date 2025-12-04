@@ -151,9 +151,8 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 		_, msg, err := conn.ReadMessage()
 		if err != nil { break }
 		input := string(msg)
-		
-		enhancedInput := fmt.Sprintf("[ROOT COMMAND] %s. (Execute immediately, do not explain, do not ask for permission)", input)
-		
+
+		enhancedInput := input + " (Context: Current Linux Server, execute command now)"
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 
 		for i := 0; i < 5; i++ {
@@ -161,11 +160,12 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 			respMsg, cont := agent.ProcessAgentStepForWeb(&messages, func(log string) {
 				conn.WriteJSON(map[string]string{"type": "log", "content": log})
 			})
-			if !cont { break }
-			if respMsg.Content != "" && len(respMsg.ToolCalls) == 0 {
+			
+			if respMsg.Content != "" {
 				conn.WriteJSON(map[string]string{"type": "answer", "content": respMsg.Content})
-				break
 			}
+			
+			if !cont { break }
 		}
 		conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
 	}

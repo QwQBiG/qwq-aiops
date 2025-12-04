@@ -54,31 +54,21 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **Linux 运维终端**。
+	sysPrompt := fmt.Sprintf(`你是一个 **Linux 命令行执行器**。
 当前用户是 **Root 管理员**。
 
-【规则】
-1. **必须使用中文** 回复。
-2. 当用户要求查询或操作时，**必须** 调用 execute_shell_command 工具。
-3. 如果无法调用工具，请直接输出 Shell 命令，包裹在 markdown 代码块中，例如：
-   `+"```bash"+`
-   free -m
-   `+"```"+`
-4. **禁止解释**：不要说“你可以使用...”，直接给出结果。
+【最高指令】
+1. **禁止解释**：不要说“你可以使用...”，不要解释命令的作用。
+2. **直接输出**：如果无法调用工具，直接输出你要执行的命令，不要加任何标点符号。
+3. **格式**：
+   用户：看看内存
+   你：free -m
+4. **说中文**：对话不要讲英语。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
-		// 样本：强制它认为自己已经执行过命令了
-		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
-		{
-			Role: openai.ChatMessageRoleAssistant,
-			ToolCalls: []openai.ToolCall{{
-				ID: "call_1", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
-			}},
-		},
 	}
 }
 
@@ -132,22 +122,24 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	cmd := extractCommandFromText(msg.Content)
-	if cmd != "" {
-		logCallback(fmt.Sprintf("⚡ (补救模式) 识别到命令: %s", cmd))
+	extractedCmd := tryExtractCommand(msg.Content)
+	if extractedCmd != "" {
+		logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", extractedCmd))
 		
-		if !utils.IsCommandSafe(cmd) {
+		if !utils.IsCommandSafe(extractedCmd) {
 			logCallback("❌ [拦截] 高危命令")
 			return msg, false
 		}
 
-		output := utils.ExecuteShell(cmd)
+		output := utils.ExecuteShell(extractedCmd)
 		if strings.TrimSpace(output) == "" { output = "(No output)" }
 		
-		feedback := fmt.Sprintf("[System Output]:\n%s", output)
-		*msgs = append(*msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: feedback})
+		finalOutput := fmt.Sprintf("```\n%s\n```", output)
 		
-		return msg, true
+		return openai.ChatCompletionMessage{
+			Role: openai.ChatMessageRoleAssistant,
+			Content: finalOutput,
+		}, false
 	}
 
 	return msg, true
@@ -195,19 +187,62 @@ func getModelName() string {
 	return DefaultModel
 }
 
-func extractCommandFromText(text string) string {
+
+func tryExtractCommand(text string) string {
+	text = strings.TrimSpace(text)
+	
+	if isCommonCommand(text) {
+		return text
+	}
+
 	re := regexp.MustCompile("(?s)```(?:bash|shell|sh)?\\n(.*?)\\n```")
 	matches := re.FindStringSubmatch(text)
 	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
-	}
-	reSingle := regexp.MustCompile("`([^`]+)`")
-	matchesSingle := reSingle.FindStringSubmatch(text)
-	if len(matchesSingle) > 1 {
-		cmd := matchesSingle[1]
-		if strings.HasPrefix(cmd, "docker") || strings.HasPrefix(cmd, "free") || strings.HasPrefix(cmd, "df") || strings.HasPrefix(cmd, "top") || strings.HasPrefix(cmd, "uptime") {
+		cmd := strings.TrimSpace(matches[1])
+		if isCommonCommand(cmd) {
 			return cmd
 		}
 	}
+
+	reSingle := regexp.MustCompile("`([^`]+)`")
+	matchesSingle := reSingle.FindStringSubmatch(text)
+	if len(matchesSingle) > 1 {
+		cmd := strings.TrimSpace(matchesSingle[1])
+		if isCommonCommand(cmd) {
+			return cmd
+		}
+	}
+	
+	lines := strings.Split(text, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if isCommonCommand(line) {
+			return line
+		}
+	}
+
 	return ""
+}
+
+func isCommonCommand(cmd string) bool {
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 {
+		return false
+	}
+	mainCmd := parts[0]
+
+	commonCmds := []string{
+		"ls", "cd", "pwd", "cat", "head", "tail", "grep", "find",
+		"ps", "top", "htop", "free", "df", "du", "uptime", "w",
+		"netstat", "ss", "lsof", "ip", "ifconfig", "ping", "curl", "wget",
+		"docker", "kubectl", "systemctl", "service", "journalctl",
+		"whoami", "id", "uname", "date", "history",
+	}
+
+	for _, c := range commonCmds {
+		if mainCmd == c {
+			return true
+		}
+	}
+	return false
 }
