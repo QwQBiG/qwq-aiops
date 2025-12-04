@@ -177,8 +177,8 @@ sudo docker run -d \
   --restart unless-stopped \
   --network host \
   -v $(pwd)/config.json:/root/config.json \
-  -v $(pwd)/docs.txt:/root/docs.txt \
   -v $(pwd)/qwq.log:/root/qwq.log \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   ghcr.io/qwqbig/qwq-aiops:main \
   web -c /root/config.json
   ```

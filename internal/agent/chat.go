@@ -21,13 +21,11 @@ var Client *openai.Client
 
 func InitClient() {
 	cfg := openai.DefaultConfig(config.GlobalConfig.ApiKey)
-	
 	if config.GlobalConfig.BaseURL != "" {
 		cfg.BaseURL = config.GlobalConfig.BaseURL
 	} else {
 		cfg.BaseURL = DefaultBaseURL
 	}
-	
 	Client = openai.NewClientWithConfig(cfg)
 }
 
@@ -57,7 +55,7 @@ var Tools = []openai.Tool{
 }
 
 func AnalyzeWithAI(issue string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	knowledgePart := ""
@@ -96,7 +94,10 @@ func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompleti
 func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback func(string)) (openai.ChatCompletionMessage, bool) {
 	ctx := context.Background()
 	
-	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	
+	resp, err := Client.CreateChatCompletion(reqCtx, openai.ChatCompletionRequest{
 		Model: getModelName(),
 		Messages: *msgs, 
 		Tools: Tools, 
