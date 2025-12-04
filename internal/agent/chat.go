@@ -57,7 +57,7 @@ var Tools = []openai.Tool{
 }
 
 func AnalyzeWithAI(issue string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Second)
 	defer cancel()
 
 	knowledgePart := ""

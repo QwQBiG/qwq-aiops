@@ -158,7 +158,8 @@ cat <<EOF > config.json
   "knowledge_file": "/root/docs.txt",
   "debug": true,
   "patrol_rules": [
-    { "name": "Docker守护进程", "command": "systemctl is-active docker || echo 'Docker is dead'" }
+    {"name": "Docker存活检查",
+    "command": "curl --unix-socket /var/run/docker.sock http://localhost/version >/dev/null 2>&1 || echo 'Docker Socket连接失败'"}
   ],
   "http_rules": [
     { "name": "本地Ollama", "url": "http://127.0.0.1:11434", "code": 200 }
@@ -183,7 +184,7 @@ sudo docker run -d \
   ```
 
   ### 4. 见证时刻
-1. **打开浏览器**：访问 http://你的服务器IP:8899。
+1. **打开浏览器**：访问 http://你的服务器IP:8899
 2. **登录**：输入账号 `admin`，密码 `123`。 （输入你自己的哈）
 3. **看面板**：你会看到 CPU、内存曲线开始跳动，左下角显示 "本地Ollama UP"。
 4. **调戏 AI**：
