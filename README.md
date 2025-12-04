@@ -78,4 +78,36 @@ docker run -d \
   web -c /root/config.json
   ```
 
-  
+  **访问面板**: http://服务器IP:8899  
+**查看日志**: `tail -f qwq.log`
+
+## 🛠️ 开发者指南
+
+### 目录结构
+
+```text
+qwq-aiops/
+├── cmd/qwq/main.go         # 程序入口
+├── internal/               # 核心模块
+│   ├── agent/              # AI 智能体 (OpenAI/Ollama)
+│   ├── config/             # 配置管理
+│   ├── executor/           # 智能执行器
+│   ├── logger/             # 日志系统 (Lumberjack)
+│   ├── monitor/            # HTTP 应用监控
+│   ├── notify/             # 告警中心 (DingTalk/Telegram)
+│   ├── security/           # 安全风控与脱敏
+│   ├── server/             # Web 服务器 & 前端
+│   └── utils/              # 底层工具
+├── Dockerfile              # 构建文件
+└── go.mod                  # 依赖定义
+```
+
+### 本地编译
+```bash
+git clone https://github.com/qwqbig/qwq-aiops.git
+go mod tidy
+go build -o qwq cmd/qwq/main.go
+```
+
+## 📄 License
+MIT License. Copyright (c) 2025 qwqBig.
