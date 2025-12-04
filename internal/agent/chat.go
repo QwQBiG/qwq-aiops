@@ -54,21 +54,39 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **Linux 命令行执行器**。
-当前用户是 **Root 管理员**。
+	sysPrompt := fmt.Sprintf(`你是一个 **智能运维专家 (qwq)**。
+当前环境：**Linux Server (Docker Container)**。
+用户身份：**Root 管理员**。
 
-【最高指令】
-1. **禁止解释**：不要说“你可以使用...”，不要解释命令的作用。
-2. **直接输出**：如果无法调用工具，直接输出你要执行的命令，不要加任何标点符号。
-3. **格式**：
-   用户：看看内存
-   你：free -m
-4. **说中文**：对话不要讲英语。
+【行为准则】
+1. **查询/操作类请求**（如“看看内存”、“重启Nginx”）：
+   - **必须**调用 execute_shell_command 工具。
+   - 或者直接输出命令代码块。
+   - **禁止**废话。
+
+2. **生成/解释类请求**（如“写一个yaml”、“什么是K8s”）：
+   - **直接输出文本或代码内容**。
+   - **不要**尝试执行命令。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
+		
+		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
+		{
+			Role: openai.ChatMessageRoleAssistant,
+			ToolCalls: []openai.ToolCall{{
+				ID: "call_1", Type: openai.ToolTypeFunction,
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
+			}},
+		},
+
+		{Role: openai.ChatMessageRoleUser, Content: "帮我写一个 hello world 的 python 脚本"},
+		{
+			Role: openai.ChatMessageRoleAssistant,
+			Content: "```python\nprint('Hello World')\n```",
+		},
 	}
 }
 
@@ -122,24 +140,19 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	extractedCmd := tryExtractCommand(msg.Content)
-	if extractedCmd != "" {
-		logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", extractedCmd))
-		
-		if !utils.IsCommandSafe(extractedCmd) {
-			logCallback("❌ [拦截] 高危命令")
-			return msg, false
+	cmd := extractCommandFromText(msg.Content)
+	if cmd != "" {
+		if isSafeAutoCommand(cmd) {
+			logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", cmd))
+			output := utils.ExecuteShell(cmd)
+			if strings.TrimSpace(output) == "" { output = "(No output)" }
+			
+			finalOutput := fmt.Sprintf("```\n%s\n```", output)
+			return openai.ChatCompletionMessage{
+				Role: openai.ChatMessageRoleAssistant,
+				Content: finalOutput,
+			}, false
 		}
-
-		output := utils.ExecuteShell(extractedCmd)
-		if strings.TrimSpace(output) == "" { output = "(No output)" }
-		
-		finalOutput := fmt.Sprintf("```\n%s\n```", output)
-		
-		return openai.ChatCompletionMessage{
-			Role: openai.ChatMessageRoleAssistant,
-			Content: finalOutput,
-		}, false
 	}
 
 	return msg, true
@@ -187,60 +200,38 @@ func getModelName() string {
 	return DefaultModel
 }
 
-
-func tryExtractCommand(text string) string {
-	text = strings.TrimSpace(text)
-	
-	if isCommonCommand(text) {
-		return text
-	}
-
+func extractCommandFromText(text string) string {
 	re := regexp.MustCompile("(?s)```(?:bash|shell|sh)?\\n(.*?)\\n```")
 	matches := re.FindStringSubmatch(text)
 	if len(matches) > 1 {
-		cmd := strings.TrimSpace(matches[1])
-		if isCommonCommand(cmd) {
-			return cmd
-		}
+		return strings.TrimSpace(matches[1])
 	}
-
 	reSingle := regexp.MustCompile("`([^`]+)`")
 	matchesSingle := reSingle.FindStringSubmatch(text)
 	if len(matchesSingle) > 1 {
-		cmd := strings.TrimSpace(matchesSingle[1])
-		if isCommonCommand(cmd) {
-			return cmd
-		}
+		return strings.TrimSpace(matchesSingle[1])
 	}
-	
-	lines := strings.Split(text, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if isCommonCommand(line) {
-			return line
-		}
-	}
-
 	return ""
 }
 
-func isCommonCommand(cmd string) bool {
+func isSafeAutoCommand(cmd string) bool {
 	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
-		return false
-	}
+	if len(parts) == 0 { return false }
 	mainCmd := parts[0]
 
-	commonCmds := []string{
-		"ls", "cd", "pwd", "cat", "head", "tail", "grep", "find",
+	whitelist := []string{
+		"ls", "pwd", "cat", "head", "tail", "grep", "find",
 		"ps", "top", "htop", "free", "df", "du", "uptime", "w",
-		"netstat", "ss", "lsof", "ip", "ifconfig", "ping", "curl", "wget",
+		"netstat", "ss", "lsof", "ip", "ifconfig", 
 		"docker", "kubectl", "systemctl", "service", "journalctl",
 		"whoami", "id", "uname", "date", "history",
 	}
 
-	for _, c := range commonCmds {
+	for _, c := range whitelist {
 		if mainCmd == c {
+			if strings.Contains(cmd, ">") || strings.Contains(cmd, "| bash") || strings.Contains(cmd, "| sh") {
+				return false
+			}
 			return true
 		}
 	}
