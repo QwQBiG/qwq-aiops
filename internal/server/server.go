@@ -15,7 +15,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+    "strconv"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/gorilla/websocket"
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -56,6 +58,8 @@ func Start(port string) {
 	if err != nil {
 		fmt.Printf("无法创建日志文件: %v\n", err)
 	}
+
+	http.Handle("/metrics", promhttp.Handler())
 
 	// 启动后台采集协程
 	go collectStatsLoop()
@@ -113,8 +117,16 @@ func collectOnePoint() StatsPoint {
 
 	// 注意：HTTP 检查比较耗时，这里每2秒跑一次可能太频繁
 	// 生产环境建议把 HTTP 检查单独开一个低频 Ticker
-	// 这里为了演示效果暂且同步
 	httpStatus := monitor.RunChecks()
+
+	loadFloat, _ := strconv.ParseFloat(load, 64)
+    diskPctFloat, _ := strconv.ParseFloat(diskPct, 64)
+    tcpStr := strings.TrimSpace(utils.ExecuteShell("netstat -ant | grep ESTABLISHED | wc -l"))
+    tcpFloat, _ := strconv.ParseFloat(tcpStr, 64)
+
+    monitor.UpdatePrometheusMetrics(loadFloat, memPct, diskPctFloat, tcpFloat)
+    
+    monitor.UpdateAppMetrics(httpStatus)
 
 	return StatsPoint{
 		Time:      time.Now().Format("15:04:05"),
