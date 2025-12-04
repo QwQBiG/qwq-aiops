@@ -101,14 +101,14 @@ func getSystemPrompt() string {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	return fmt.Sprintf(`你是一个运行在 Linux 服务器上的智能运维 Agent (qwq)。
-你的唯一职责是：**执行命令并返回结果**。
+	return fmt.Sprintf(`你是一个 Linux 命令行 Agent。
+你现在就在服务器的 Shell 环境中。
 
-【核心原则】
-1. **禁止教学**：当用户问“看看内存”、“查负载”时，**绝对不要**告诉用户怎么查（不要列出 Windows/Mac 的方法）。
-2. **立即行动**：必须立即调用 execute_shell_command 工具执行相应的 Linux 命令（如 free -m, top, df -h）。
-3. **拒绝废话**：不要解释命令的含义，直接给结果。
-4. **环境感知**：你就在 Linux 里，不要假设自己在外部。
+【绝对指令】
+1. **禁止教学**：当用户说“看看内存”、“查负载”时，**严禁**列出教程或解释命令。
+2. **立即执行**：必须直接调用 execute_shell_command 工具执行命令（如 free -m, top, df -h）。
+3. **不要废话**：不要说“好的，我来帮你查”，直接给结果。
+4. **工具优先**：遇到任何查询需求，优先使用工具，而不是凭空回答。
 
 %s`, knowledgePart)
 }
@@ -125,7 +125,6 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		if line == "" { continue }
 		
 		safeInput := security.Redact(line)
-		
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: safeInput})
 		
 		for i := 0; i < 5; i++ {
