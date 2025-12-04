@@ -1,4 +1,4 @@
-// hello world
+// qwq
 package main
 
 import (

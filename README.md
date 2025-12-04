@@ -159,5 +159,3 @@ A: 僵尸进程通常稍纵即逝。qwq 采用精准捕获逻辑，只有当 ps 
 **Q: 如何添加新的告警渠道？**  
 A: 修改 `internal/notify/notify.go`，在 Send 函数中增加新的发送逻辑即可。
 
-## 📄 License
-MIT License. Copyright (c) 2025 qwqBiG.
