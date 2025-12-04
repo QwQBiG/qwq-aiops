@@ -152,7 +152,7 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 		if err != nil { break }
 		input := string(msg)
 		
-		enhancedInput := fmt.Sprintf("[SYSTEM COMMAND] User Request: '%s'. EXECUTE TOOL NOW. NO TALKING.", input)
+		enhancedInput := fmt.Sprintf("Request: %s. Action: Execute the corresponding Linux command immediately using the tool.", input)
 		
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 
