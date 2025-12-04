@@ -10,6 +10,7 @@ import (
 	"qwq/internal/logger"
 	"qwq/internal/monitor"
 	"qwq/internal/notify"
+	"qwq/internal/security"
 	"qwq/internal/server"
 	"qwq/internal/utils"
 	"runtime"
@@ -124,7 +125,8 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		if line == "" { continue }
 		
 		safeInput := security.Redact(line)
-		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: line})
+		
+		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: safeInput})
 		
 		for i := 0; i < 5; i++ {
 			respMsg, cont := agent.ProcessAgentStep(&messages)
