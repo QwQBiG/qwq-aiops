@@ -1,3 +1,4 @@
+// VERSION: FINAL_FIX
 package main
 
 import (
@@ -53,7 +54,7 @@ func main() {
 	rootCmd.AddCommand(&cobra.Command{Use: "patrol", Short: "Patrol Mode", Run: runPatrolMode})
 	rootCmd.AddCommand(&cobra.Command{Use: "status", Short: "Send status", Run: runStatusMode})
 	rootCmd.AddCommand(&cobra.Command{Use: "web", Short: "Web Dashboard", Run: runWebMode})
-
+	
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "run [command]",
 		Short: "Smart execution with auto-remediation",
@@ -99,7 +100,7 @@ func runChatMode(cmd *cobra.Command, args []string) {
 	rl, _ := readline.NewEx(&readline.Config{Prompt: "\033[32mqwq > \033[0m", HistoryFile: "/tmp/qwq_history"})
 	defer rl.Close()
 	fmt.Printf("\033[36m(qwq) Agent Online. System: %s\033[0m\n", runtime.GOOS)
-
+	
 	knowledgePart := ""
 	if config.CachedKnowledge != "" {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
@@ -116,21 +117,16 @@ func runChatMode(cmd *cobra.Command, args []string) {
 	messages := []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: sysPrompt}}
 	for {
 		line, _ := rl.Readline()
-		if line == "exit" {
-			break
-		}
-		if line == "" {
-			continue
-		}
-
+		if line == "exit" { break }
+		if line == "" { continue }
+		
+		// [关键修复] 使用 security 包进行脱敏，并真正使用 safeInput
 		safeInput := security.Redact(line)
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: safeInput})
-
+		
 		for i := 0; i < 5; i++ {
 			respMsg, cont := agent.ProcessAgentStep(&messages)
-			if !cont {
-				break
-			}
+			if !cont { break }
 			if respMsg.Content != "" && len(respMsg.ToolCalls) == 0 {
 				r, _ := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(100))
 				out, _ := r.Render(respMsg.Content)
@@ -156,10 +152,8 @@ func runPatrolLoop(interval time.Duration) {
 	performPatrol()
 	for {
 		select {
-		case <-checkTicker.C:
-			performPatrol()
-		case <-reportTicker.C:
-			sendSystemStatus()
+		case <-checkTicker.C: performPatrol()
+		case <-reportTicker.C: sendSystemStatus()
 		}
 	}
 }
@@ -219,7 +213,7 @@ func sendSystemStatus() {
 	memInfo := strings.TrimSpace(utils.ExecuteShell("free -m | awk 'NR==2{printf \"%.1f%% (已用 %sM / 总计 %sM)\", $3/$2*100, $3, $2}'"))
 	diskInfo := strings.TrimSpace(utils.ExecuteShell("df -h / | awk 'NR==2 {print $5 \" (剩余 \" $4 \")\"}'"))
 	loadInfo := strings.TrimSpace(utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }'"))
-
+	
 	report := fmt.Sprintf(`### 📊 服务器状态日报 [%s]
 
 > **IP**: %s
@@ -238,7 +232,7 @@ func sendSystemStatus() {
 *qwq AIOps 自动监控*
 `, hostname, ip, uptime, loadInfo, memInfo, diskInfo,
 		strings.TrimSpace(utils.ExecuteShell("netstat -ant | grep ESTABLISHED | wc -l")))
-
+	
 	notify.Send("服务器状态日报", report)
 	logger.Info("✅ 健康日报已发送")
 }
