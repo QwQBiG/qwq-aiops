@@ -108,7 +108,9 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		if line == "" { continue }
 		
 		safeInput := security.Redact(line)
-		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: safeInput})
+		enhancedInput := safeInput + " (Context: Current Linux Server, execute command now)"
+		
+		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 		
 		for i := 0; i < 5; i++ {
 			respMsg, cont := agent.ProcessAgentStep(&messages)

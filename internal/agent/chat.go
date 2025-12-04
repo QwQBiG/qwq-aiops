@@ -38,7 +38,7 @@ var Tools = []openai.Tool{
 			Parameters: json.RawMessage(`{
 				"type": "object",
 				"properties": {
-					"command": { "type": "string", "description": "The shell command (e.g., 'ls -la', 'free -m')" },
+					"command": { "type": "string", "description": "The shell command (e.g., 'free -m', 'uptime', 'df -h')" },
 					"reason": { "type": "string", "description": "The reason" }
 				},
 				"required": ["command", "reason"]
@@ -53,56 +53,50 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 Linux Shell Agent。
-你运行在服务器内部。你的唯一作用是执行命令。
+	sysPrompt := fmt.Sprintf(`你是一个 Linux 命令行执行器。
+当前环境：**Ubuntu Linux**。
+用户身份：**Root 管理员**。
 
-【绝对规则】
-1. 当用户要求查询系统状态时，**必须**调用 execute_shell_command。
-2. **禁止**回答“你可以使用xx命令”，而是**直接执行**该命令。
-3. **禁止**列出 Windows/Mac 的操作方法。
-4. 不要废话，直接干活。
+【绝对行为准则】
+1. **禁止反问**：当用户说“内存”、“负载”、“磁盘”时，默认就是指**当前这台服务器**。不要问用户是 Windows 还是 Mac。
+2. **禁止教学**：不要告诉用户“你可以使用 top 命令”，而是**直接调用工具执行 top 命令**。
+3. **工具优先**：你的回复必须包含 tool_calls，除非用户只是在打招呼。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
-		// --- 伪造示例 1: 查磁盘 ---
-		{Role: openai.ChatMessageRoleUser, Content: "磁盘空间够吗"},
+		// 样本 1：内存
+		{Role: openai.ChatMessageRoleUser, Content: "看看内存 (Context: Linux)"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
-			ToolCalls: []openai.ToolCall{
-				{
-					ID: "call_1",
-					Type: openai.ToolTypeFunction,
-					Function: openai.FunctionCall{
-						Name: "execute_shell_command",
-						Arguments: `{"command": "df -h", "reason": "check disk usage"}`,
-					},
-				},
-			},
+			ToolCalls: []openai.ToolCall{{
+				ID: "call_1", Type: openai.ToolTypeFunction,
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
+			}},
 		},
-		{
-			Role: openai.ChatMessageRoleTool,
-			ToolCallID: "call_1",
-			Content: "Filesystem Size Used Avail Use% Mounted on\n/dev/sda1 50G 10G 40G 20% /",
-		},
-		{Role: openai.ChatMessageRoleAssistant, Content: "磁盘空间充足，根目录使用率为 20%。"},
+		{Role: openai.ChatMessageRoleTool, ToolCallID: "call_1", Content: "Mem: 16000 8000 8000"},
+		{Role: openai.ChatMessageRoleAssistant, Content: "当前内存使用量为 8000MB (50%)。"},
 
-		// --- 伪造示例 2: 查负载 ---
-		{Role: openai.ChatMessageRoleUser, Content: "看看负载"},
+		// 样本 2：负载
+		{Role: openai.ChatMessageRoleUser, Content: "查一下负载 (Context: Linux)"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
-			ToolCalls: []openai.ToolCall{
-				{
-					ID: "call_2",
-					Type: openai.ToolTypeFunction,
-					Function: openai.FunctionCall{
-						Name: "execute_shell_command",
-						Arguments: `{"command": "uptime", "reason": "check load average"}`,
-					},
-				},
-			},
+			ToolCalls: []openai.ToolCall{{
+				ID: "call_2", Type: openai.ToolTypeFunction,
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "uptime", "reason": "check load"}`},
+			}},
+		},
+		
+		// 样本 3：Docker
+		{Role: openai.ChatMessageRoleUser, Content: "看下docker容器 (Context: Linux)"},
+		{
+			Role: openai.ChatMessageRoleAssistant,
+			ToolCalls: []openai.ToolCall{{
+				ID: "call_3", Type: openai.ToolTypeFunction,
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "docker ps", "reason": "list containers"}`},
+			}},
 		},
 	}
 }
@@ -111,9 +105,10 @@ func AnalyzeWithAI(issue string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	// 使用带示例的消息列表
+	enhancedIssue := issue + "\n(Context: Current Linux Server, analyze and fix immediately)"
+
 	msgs := GetBaseMessages()
-	msgs = append(msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: issue})
+	msgs = append(msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedIssue})
 
 	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: getModelName(),
