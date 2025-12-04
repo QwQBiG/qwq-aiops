@@ -10,9 +10,9 @@ import (
 	"qwq/internal/logger"
 	"qwq/internal/monitor"
 	"qwq/internal/notify"
+	"qwq/internal/security"
 	"qwq/internal/server"
 	"qwq/internal/utils"
-	"qwq/internal/security"
 	"runtime"
 	"strings"
 	"syscall"
@@ -74,19 +74,11 @@ func main() {
 }
 
 func runWebMode(cmd *cobra.Command, args []string) {
-	// 注入回调
 	server.TriggerPatrolFunc = performPatrol
 	server.TriggerStatusFunc = sendSystemStatus
-
-	// 启动后台任务
 	go runPatrolLoop(8 * time.Hour)
 	go sendSystemStatus()
-
-	// [修复] 在协程中启动 Server，防止阻塞主线程
-	go server.Start(":8899")
-
-	// 主线程等待信号
-	waitForShutdown()
+	server.Start(":8899")
 }
 
 func runPatrolMode(cmd *cobra.Command, args []string) {
@@ -127,9 +119,8 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		if line == "exit" { break }
 		if line == "" { continue }
 		
-		safeInput := utils.IsCommandSafe(line) // 简单检查，实际应在 executor 处理
-		// 这里仅做演示，实际 Chat 逻辑保持不变
-		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: line})
+		safeInput := security.Redact(line)
+		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: safeInput})
 		
 		for i := 0; i < 5; i++ {
 			respMsg, cont := agent.ProcessAgentStep(&messages)
