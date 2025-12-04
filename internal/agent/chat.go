@@ -54,39 +54,37 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **智能运维专家 (qwq)**。
-当前环境：**Linux Server (Docker Container)**。
-用户身份：**Root 管理员**。
+	sysPrompt := fmt.Sprintf(`你是一个 **Linux Shell 命令翻译器**。
+你的唯一任务是将用户的自然语言翻译成 **Linux Shell 命令**。
 
-【行为准则】
-1. **查询/操作类请求**（如“看看内存”、“重启Nginx”）：
-   - **必须**调用 execute_shell_command 工具。
-   - 或者直接输出命令代码块。
-   - **禁止**废话。
+【负面约束 (绝对禁止)】
+1. **禁止** 编写 Python、Java、C++ 代码。
+2. **禁止** 编写 Dockerfile 或配置文件。
+3. **禁止** 提供教程、解释或步骤说明。
+4. **禁止** 使用 markdown 标题（如 ###）。
 
-2. **生成/解释类请求**（如“写一个yaml”、“什么是K8s”）：
-   - **直接输出文本或代码内容**。
-   - **不要**尝试执行命令。
+【输出规则】
+1. 如果用户想查询状态，直接输出查询命令（如 free -m, docker ps）。
+2. 如果用户想操作，直接输出操作命令。
+3. 必须将命令包裹在 `+"```bash"+` 代码块中。
+4. 对话要说中文。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
+		// 强力样本 1
 		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
-		{
-			Role: openai.ChatMessageRoleAssistant,
-			ToolCalls: []openai.ToolCall{{
-				ID: "call_1", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
-			}},
-		},
+		{Role: openai.ChatMessageRoleAssistant, Content: "```bash\nfree -h\n```"},
 
-		{Role: openai.ChatMessageRoleUser, Content: "帮我写一个 hello world 的 python 脚本"},
-		{
-			Role: openai.ChatMessageRoleAssistant,
-			Content: "```python\nprint('Hello World')\n```",
-		},
+		// 强力样本 2
+		{Role: openai.ChatMessageRoleUser, Content: "查看docker镜像"},
+		{Role: openai.ChatMessageRoleAssistant, Content: "```bash\ndocker images\n```"},
+
+		// 强力样本 3
+		{Role: openai.ChatMessageRoleUser, Content: "系统负载高吗"},
+		{Role: openai.ChatMessageRoleAssistant, Content: "```bash\nuptime\n```"},
 	}
 }
 
@@ -100,7 +98,7 @@ func AnalyzeWithAI(issue string) string {
 	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: getModelName(),
 		Messages: msgs,
-		Temperature: 0.1,
+		Temperature: 0.0,
 	})
 	if err != nil {
 		return "AI 连接失败: " + err.Error()
@@ -123,7 +121,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		Model: getModelName(),
 		Messages: *msgs, 
 		Tools: Tools, 
-		Temperature: 0.1,
+		Temperature: 0.0,
 	})
 	
 	if err != nil {
@@ -133,6 +131,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	msg := resp.Choices[0].Message
 	*msgs = append(*msgs, msg)
 
+
 	if len(msg.ToolCalls) > 0 {
 		for _, toolCall := range msg.ToolCalls {
 			handleToolCall(toolCall, msgs, logCallback)
@@ -140,8 +139,10 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
+
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
+
 		if isSafeAutoCommand(cmd) {
 			logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", cmd))
 			output := utils.ExecuteShell(cmd)
@@ -152,6 +153,9 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 				Role: openai.ChatMessageRoleAssistant,
 				Content: finalOutput,
 			}, false
+		} else {
+
+			return msg, false
 		}
 	}
 
@@ -201,15 +205,22 @@ func getModelName() string {
 }
 
 func extractCommandFromText(text string) string {
+
 	re := regexp.MustCompile("(?s)```(?:bash|shell|sh)?\\n(.*?)\\n```")
 	matches := re.FindStringSubmatch(text)
 	if len(matches) > 1 {
 		return strings.TrimSpace(matches[1])
 	}
+
 	reSingle := regexp.MustCompile("`([^`]+)`")
 	matchesSingle := reSingle.FindStringSubmatch(text)
 	if len(matchesSingle) > 1 {
 		return strings.TrimSpace(matchesSingle[1])
+	}
+
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	if len(lines) == 1 && isSafeAutoCommand(lines[0]) {
+		return lines[0]
 	}
 	return ""
 }
