@@ -114,7 +114,7 @@ MIT License. Copyright (c) 2025 qwqBig.
 
 ---
 
-## 🎬 第二部分：全 Docker 极速体验流程 (示范)
+## 🎬 第二部分：全 Docker "try a try" (示范)
 
 假设你现在拿到了一台**全新的 Ubuntu 服务器**，里面什么都没有（只有 Docker）。
 我们要实现：**本地跑 DeepSeek-R1 大模型 + qwq 智能运维平台**。
@@ -191,3 +191,7 @@ sudo docker run -d \
    - **预期回答**：它会根据 docs.txt 回答你：“根据内部知识库，请优先清理 /var/log/journal 目录。”
    - 输入：**帮我看看当前系统负载。**
    - **预期回答**：它会自动执行 `uptime` 并告诉你结果。
+   
+---
+
+**THANKS**
