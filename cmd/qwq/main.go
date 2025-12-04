@@ -1,4 +1,3 @@
-// VERSION: FINAL_FIX
 package main
 
 import (

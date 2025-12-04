@@ -3,11 +3,9 @@ name: Build and Publish Docker Image
 on:
   push:
     branches: [ "main" ]
-    # 当你打 tag (比如 v1.0) 时也会触发
     tags: [ 'v*.*.*' ]
 
 env:
-  # 使用 GitHub 自带的容器仓库 (GHCR)
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
