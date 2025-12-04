@@ -145,23 +145,7 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	knowledgePart := ""
-	if config.CachedKnowledge != "" {
-		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
-	}
-	
-	sysPrompt := fmt.Sprintf(`你是一个 Linux 命令行 Agent。
-你现在就在服务器的 Shell 环境中。
-
-【绝对指令】
-1. **禁止教学**：当用户说“看看内存”、“查负载”时，**严禁**列出教程或解释命令。
-2. **立即执行**：必须直接调用 execute_shell_command 工具执行命令（如 free -m, top, df -h）。
-3. **不要废话**：不要说“好的，我来帮你查”，直接给结果。
-4. **工具优先**：遇到任何查询需求，优先使用工具，而不是凭空回答。
-
-%s`, knowledgePart)
-
-	messages := []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: sysPrompt}}
+	messages := agent.GetBaseMessages()
 
 	for {
 		_, msg, err := conn.ReadMessage()

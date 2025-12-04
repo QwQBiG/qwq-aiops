@@ -95,30 +95,13 @@ func runStatusMode(cmd *cobra.Command, args []string) {
 	sendSystemStatus()
 }
 
-func getSystemPrompt() string {
-	knowledgePart := ""
-	if config.CachedKnowledge != "" {
-		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
-	}
-
-	return fmt.Sprintf(`你是一个 Linux 命令行 Agent。
-你现在就在服务器的 Shell 环境中。
-
-【绝对指令】
-1. **禁止教学**：当用户说“看看内存”、“查负载”时，**严禁**列出教程或解释命令。
-2. **立即执行**：必须直接调用 execute_shell_command 工具执行命令（如 free -m, top, df -h）。
-3. **不要废话**：不要说“好的，我来帮你查”，直接给结果。
-4. **工具优先**：遇到任何查询需求，优先使用工具，而不是凭空回答。
-
-%s`, knowledgePart)
-}
-
 func runChatMode(cmd *cobra.Command, args []string) {
 	rl, _ := readline.NewEx(&readline.Config{Prompt: "\033[32mqwq > \033[0m", HistoryFile: "/tmp/qwq_history"})
 	defer rl.Close()
 	fmt.Printf("\033[36m(qwq) Agent Online. System: %s\033[0m\n", runtime.GOOS)
 	
-	messages := []openai.ChatCompletionMessage{{Role: openai.ChatMessageRoleSystem, Content: getSystemPrompt()}}
+	messages := agent.GetBaseMessages()
+
 	for {
 		line, _ := rl.Readline()
 		if line == "exit" { break }

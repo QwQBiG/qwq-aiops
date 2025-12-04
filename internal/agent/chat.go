@@ -29,13 +29,6 @@ func InitClient() {
 	Client = openai.NewClientWithConfig(cfg)
 }
 
-func getModelName() string {
-	if config.GlobalConfig.Model != "" {
-		return config.GlobalConfig.Model
-	}
-	return DefaultModel
-}
-
 var Tools = []openai.Tool{
 	{
 		Type: openai.ToolTypeFunction,
@@ -45,7 +38,7 @@ var Tools = []openai.Tool{
 			Parameters: json.RawMessage(`{
 				"type": "object",
 				"properties": {
-					"command": { "type": "string", "description": "The shell command" },
+					"command": { "type": "string", "description": "The shell command (e.g., 'ls -la', 'free -m')" },
 					"reason": { "type": "string", "description": "The reason" }
 				},
 				"required": ["command", "reason"]
@@ -54,37 +47,77 @@ var Tools = []openai.Tool{
 	},
 }
 
-func AnalyzeWithAI(issue string) string {
-	// 保持 5 分钟超时
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
+func GetBaseMessages() []openai.ChatCompletionMessage {
 	knowledgePart := ""
 	if config.CachedKnowledge != "" {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 Linux 系统故障排查专家。
-你收到的输入是系统自动巡检发现的异常日志。
+	sysPrompt := fmt.Sprintf(`你是一个 Linux Shell Agent。
+你运行在服务器内部。你的唯一作用是执行命令。
 
-【分析规则】
-1. **高负载 (Load Average)**：输入格式通常为 "1.2, 3.4, 5.6"。这是 Linux Load Average (1min, 5min, 15min)。
-   - **不要**把它当成百分比！
-   - 如果数值超过 4.0 (假设4核CPU)，视为高负载。
-   - 建议使用 'top -b -n 1 | head -20' 查看进程。
-2. **僵尸进程**：输入包含 STAT 为 Z 的进程。
-   - 必须建议杀掉父进程 (PPID)。
-   - 修复命令：kill -9 <PPID>
-3. **极简输出**：直接给出原因和一条核心修复/排查命令，不要写废话。
+【绝对规则】
+1. 当用户要求查询系统状态时，**必须**调用 execute_shell_command。
+2. **禁止**回答“你可以使用xx命令”，而是**直接执行**该命令。
+3. **禁止**列出 Windows/Mac 的操作方法。
+4. 不要废话，直接干活。
 
 %s`, knowledgePart)
 
+	return []openai.ChatCompletionMessage{
+		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
+		
+		// --- 伪造示例 1: 查磁盘 ---
+		{Role: openai.ChatMessageRoleUser, Content: "磁盘空间够吗"},
+		{
+			Role: openai.ChatMessageRoleAssistant,
+			ToolCalls: []openai.ToolCall{
+				{
+					ID: "call_1",
+					Type: openai.ToolTypeFunction,
+					Function: openai.FunctionCall{
+						Name: "execute_shell_command",
+						Arguments: `{"command": "df -h", "reason": "check disk usage"}`,
+					},
+				},
+			},
+		},
+		{
+			Role: openai.ChatMessageRoleTool,
+			ToolCallID: "call_1",
+			Content: "Filesystem Size Used Avail Use% Mounted on\n/dev/sda1 50G 10G 40G 20% /",
+		},
+		{Role: openai.ChatMessageRoleAssistant, Content: "磁盘空间充足，根目录使用率为 20%。"},
+
+		// --- 伪造示例 2: 查负载 ---
+		{Role: openai.ChatMessageRoleUser, Content: "看看负载"},
+		{
+			Role: openai.ChatMessageRoleAssistant,
+			ToolCalls: []openai.ToolCall{
+				{
+					ID: "call_2",
+					Type: openai.ToolTypeFunction,
+					Function: openai.FunctionCall{
+						Name: "execute_shell_command",
+						Arguments: `{"command": "uptime", "reason": "check load average"}`,
+					},
+				},
+			},
+		},
+	}
+}
+
+func AnalyzeWithAI(issue string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	// 使用带示例的消息列表
+	msgs := GetBaseMessages()
+	msgs = append(msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: issue})
+
 	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: getModelName(),
-		Messages: []openai.ChatCompletionMessage{
-			{Role: "system", Content: sysPrompt}, 
-			{Role: "user", Content: issue},
-		}, 
+		Messages: msgs,
 		Temperature: 0.1,
 	})
 	if err != nil {
@@ -156,4 +189,11 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 
 func addToolOutput(msgs *[]openai.ChatCompletionMessage, id, content string) {
 	*msgs = append(*msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleTool, Content: content, ToolCallID: id})
+}
+
+func getModelName() string {
+	if config.GlobalConfig.Model != "" {
+		return config.GlobalConfig.Model
+	}
+	return DefaultModel
 }
