@@ -12,6 +12,7 @@ import (
 	"qwq/internal/notify"
 	"qwq/internal/server"
 	"qwq/internal/utils"
+	"qwq/internal/security"
 	"runtime"
 	"strings"
 	"syscall"
