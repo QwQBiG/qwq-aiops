@@ -1,55 +1,53 @@
-package monitor
+package notify
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"qwq/internal/config"
-	"time"
+	"qwq/internal/logger"
 )
 
-type CheckResult struct {
-	Name    string
-	URL     string
-	Success bool
-	Latency string
-	Error   string
+func Send(title, content string) {
+	if config.GlobalConfig.DingTalkWebhook != "" {
+		go sendDingTalk(title, content)
+	}
+	if config.GlobalConfig.TelegramToken != "" && config.GlobalConfig.TelegramChatID != "" {
+		go sendTelegram(title, content)
+	}
 }
 
-func RunChecks() []CheckResult {
-	var results []CheckResult
-	client := http.Client{
-		Timeout: 10 * time.Second,
+func sendDingTalk(title, msg string) {
+	payload := map[string]interface{}{
+		"msgtype": "markdown",
+		"markdown": map[string]string{
+			"title": title,
+			"text":  msg,
+		},
 	}
-
-	for _, rule := range config.GlobalConfig.HTTPRules {
-		start := time.Now()
-		resp, err := client.Get(rule.URL)
-		latency := time.Since(start).Milliseconds()
-		
-		res := CheckResult{
-			Name:    rule.Name,
-			URL:     rule.URL,
-			Latency: fmt.Sprintf("%dms", latency),
-		}
-
-		expectedCode := rule.Code
-		if expectedCode == 0 {
-			expectedCode = 200
-		}
-
-		if err != nil {
-			res.Success = false
-			res.Error = fmt.Sprintf("连接失败: %v", err)
-		} else {
-			defer resp.Body.Close()
-			if resp.StatusCode != expectedCode {
-				res.Success = false
-				res.Error = fmt.Sprintf("状态码异常: %d (期望 %d)", resp.StatusCode, expectedCode)
-			} else {
-				res.Success = true
-			}
-		}
-		results = append(results, res)
+	jsonData, _ := json.Marshal(payload)
+	resp, err := http.Post(config.GlobalConfig.DingTalkWebhook, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		logger.Info("❌ 钉钉发送失败: %v", err)
+		return
 	}
-	return results
+	defer resp.Body.Close()
+}
+
+func sendTelegram(title, msg string) {
+	text := fmt.Sprintf("*%s*\n\n%s", title, msg)
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", config.GlobalConfig.TelegramToken)
+	payload := map[string]string{
+		"chat_id":    config.GlobalConfig.TelegramChatID,
+		"text":       text,
+		"parse_mode": "Markdown",
+	}
+	jsonData, _ := json.Marshal(payload)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		logger.Info("❌ Telegram 发送失败: %v", err)
+		return
+	}
+	defer resp.Body.Close()
 }
