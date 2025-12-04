@@ -54,37 +54,25 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **Linux Shell 命令翻译器**。
-你的唯一任务是将用户的自然语言翻译成 **Linux Shell 命令**。
+	sysPrompt := fmt.Sprintf(`你是一个 **Linux Shell 转换器**。
 
-【负面约束 (绝对禁止)】
-1. **禁止** 编写 Python、Java、C++ 代码。
-2. **禁止** 编写 Dockerfile 或配置文件。
-3. **禁止** 提供教程、解释或步骤说明。
-4. **禁止** 使用 markdown 标题（如 ###）。
-
-【输出规则】
-1. 如果用户想查询状态，直接输出查询命令（如 free -m, docker ps）。
-2. 如果用户想操作，直接输出操作命令。
-3. 必须将命令包裹在 `+"```bash"+` 代码块中。
-4. 对话要说中文。
+【规则】
+1. **运维问题**：直接输出 Shell 命令。
+   - 例如："看内存" -> "free -h"
+   - 例如："看Docker" -> "docker ps"
+2. **闲聊问题**：如果用户问"还在吗"、"你好"，请输出以 # 开头的注释。
+   - 例如："# I am online"
+3. **格式**：不要使用 Markdown，直接输出命令文本即可。
+4. **单条原则**：每次只输出一条最核心的命令。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
-		
-		// 强力样本 1
 		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "```bash\nfree -h\n```"},
-
-		// 强力样本 2
-		{Role: openai.ChatMessageRoleUser, Content: "查看docker镜像"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "```bash\ndocker images\n```"},
-
-		// 强力样本 3
-		{Role: openai.ChatMessageRoleUser, Content: "系统负载高吗"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "```bash\nuptime\n```"},
+		{Role: openai.ChatMessageRoleAssistant, Content: "free -h"},
+		{Role: openai.ChatMessageRoleUser, Content: "你好"},
+		{Role: openai.ChatMessageRoleAssistant, Content: "# Hello, ready to work."},
 	}
 }
 
@@ -98,7 +86,7 @@ func AnalyzeWithAI(issue string) string {
 	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: getModelName(),
 		Messages: msgs,
-		Temperature: 0.0,
+		Temperature: 0.1,
 	})
 	if err != nil {
 		return "AI 连接失败: " + err.Error()
@@ -121,7 +109,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		Model: getModelName(),
 		Messages: *msgs, 
 		Tools: Tools, 
-		Temperature: 0.0,
+		Temperature: 0.1,
 	})
 	
 	if err != nil {
@@ -142,6 +130,10 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
+
+		if strings.HasPrefix(cmd, "#") {
+			return msg, true
+		}
 
 		if isSafeAutoCommand(cmd) {
 			logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", cmd))
@@ -204,23 +196,30 @@ func getModelName() string {
 	return DefaultModel
 }
 
+
 func extractCommandFromText(text string) string {
 
-	re := regexp.MustCompile("(?s)```(?:bash|shell|sh)?\\n(.*?)\\n```")
-	matches := re.FindStringSubmatch(text)
-	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
-	}
+	text = strings.ReplaceAll(text, "```bash", "")
+	text = strings.ReplaceAll(text, "```sh", "")
+	text = strings.ReplaceAll(text, "```", "")
+	text = strings.ReplaceAll(text, "`", "")
+	
 
-	reSingle := regexp.MustCompile("`([^`]+)`")
-	matchesSingle := reSingle.FindStringSubmatch(text)
-	if len(matchesSingle) > 1 {
-		return strings.TrimSpace(matchesSingle[1])
-	}
+	lines := strings.Split(text, "\n")
+	
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" { continue }
+		
 
-	lines := strings.Split(strings.TrimSpace(text), "\n")
-	if len(lines) == 1 && isSafeAutoCommand(lines[0]) {
-		return lines[0]
+		if strings.HasPrefix(line, "#") {
+			return line
+		}
+
+
+		if isSafeAutoCommand(line) {
+			return line
+		}
 	}
 	return ""
 }

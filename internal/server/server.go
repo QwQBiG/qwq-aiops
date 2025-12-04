@@ -152,18 +152,7 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 		if err != nil { break }
 		input := string(msg)
 		
-		hint := ""
-		if strings.Contains(input, "内存") {
-			hint = " (Hint: Output `free -h`)"
-		} else if strings.Contains(input, "磁盘") {
-			hint = " (Hint: Output `df -h`)"
-		} else if strings.Contains(input, "负载") {
-			hint = " (Hint: Output `uptime`)"
-		} else if strings.Contains(input, "docker") || strings.Contains(input, "容器") {
-			hint = " (Hint: Output `docker ps` or `docker images`)"
-		}
-
-		enhancedInput := fmt.Sprintf("Task: %s%s. \nRequirement: Translate to Linux Shell Command. Output ONLY the command code block.", input, hint)
+		enhancedInput := input + " (Context: Linux Server)"
 		
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 
