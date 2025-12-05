@@ -39,7 +39,7 @@ var Tools = []openai.Tool{
 			Parameters: json.RawMessage(`{
 				"type": "object",
 				"properties": {
-					"command": { "type": "string", "description": "The shell command (e.g., 'free -m', 'uptime', 'df -h')" },
+					"command": { "type": "string", "description": "The shell command" },
 					"reason": { "type": "string", "description": "The reason" }
 				},
 				"required": ["command", "reason"]
@@ -123,7 +123,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		Model: getModelName(),
 		Messages: *msgs, 
 		Tools: Tools, 
-		Temperature: 0.1,
+		Temperature: 0.1, 
 	})
 	
 	if err != nil {
@@ -148,8 +148,6 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 			logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", cmd))
 			output := utils.ExecuteShell(cmd)
 			if strings.TrimSpace(output) == "" { output = "(No output)" }
-			
-			finalOutput := fmt.Sprintf("```\n%s\n```", output)
 			
 			feedback := fmt.Sprintf("[System Output]:\n%s", output)
 			*msgs = append(*msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: feedback})
