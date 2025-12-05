@@ -161,7 +161,9 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 				conn.WriteJSON(map[string]string{"type": "log", "content": log})
 			})
 			
-			if respMsg.Content != "" {
+			if cont && respMsg.Content != "" {
+				conn.WriteJSON(map[string]string{"type": "answer", "content": respMsg.Content})
+			} else if !cont && respMsg.Content != "" {
 				conn.WriteJSON(map[string]string{"type": "answer", "content": respMsg.Content})
 			}
 			

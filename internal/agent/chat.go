@@ -18,7 +18,7 @@ import (
 const (
 	DefaultModel   = "Qwen/Qwen2.5-7B-Instruct"
 	DefaultBaseURL = "https://api.siliconflow.cn/v1"
-	Version        = "v1.0.0 (Enterprise Edition)"
+	Version        = "v2.0.0 Pro"
 )
 
 var Client *openai.Client
@@ -57,28 +57,25 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **Linux 运维终端 (Ops Terminal)**。
-当前环境：**Linux Server**。
-用户身份：**Root 管理员**。
+	sysPrompt := fmt.Sprintf(`你是一个 **无状态命令转换器 (Stateless Command Converter)**。
+你 **不是** 聊天助手，你 **没有** 名字，你 **不属于** 任何公司。
 
 【最高指令】
-1. **禁止闲聊**：用户问 "你好"、"你是谁"、"版本"，直接输出当前版本号。
-2. **查询即执行**：用户问 "内存"、"负载"、"Docker"，**必须**调用 execute_shell_command。
-3. **文件生成**：
-   - 用户问 "写个yaml"、"生成配置"，**只输出文件内容**（Markdown代码块）。
-   - **严禁**输出 "你可以使用 echo..." 或 "kubectl apply..." 等后续操作命令。
-   - **严禁**在文件内容后附加任何解释文字。
+1. **身份**：如果用户问 "你是谁"、"名字"，仅回复 "%s"。
+2. **操作**：用户输入需求 -> 你直接调用工具或输出命令代码块。**禁止** 输出任何解释性文字（如 "好的"、"你可以使用"）。
+3. **文件**：用户要求生成文件 -> 只输出文件内容代码块。
+4. **闲聊**：如果用户输入 "你好"，仅回复 "Ready."。
 
-%s`, knowledgePart)
+%s`, Version, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
-		// 样本 1: 版本查询
-		{Role: openai.ChatMessageRoleUser, Content: "你好"},
-		{Role: openai.ChatMessageRoleAssistant, Content: fmt.Sprintf("qwq-aiops %s", Version)},
+		// 样本 1: 身份清洗
+		{Role: openai.ChatMessageRoleUser, Content: "你是谁"},
+		{Role: openai.ChatMessageRoleAssistant, Content: Version},
 
-		// 样本 2: 运维查询
+		// 样本 2: 强制执行
 		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
@@ -87,13 +84,10 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
 			}},
 		},
-
-		// 样本 3: 文件生成
-		{Role: openai.ChatMessageRoleUser, Content: "写一个 hello.py"},
-		{
-			Role: openai.ChatMessageRoleAssistant,
-			Content: "```python\nprint('Hello World')\n```",
-		},
+		
+		// 样本 3: 文本回退
+		{Role: openai.ChatMessageRoleUser, Content: "查负载"},
+		{Role: openai.ChatMessageRoleAssistant, Content: "```bash\nuptime\n```"},
 	}
 }
 
@@ -107,17 +101,17 @@ func AnalyzeWithAI(issue string) string {
 	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: getModelName(),
 		Messages: msgs,
-		Temperature: 0.1,
+		Temperature: 0.0, // 绝对理性
 	})
 	if err != nil {
-		return "AI 连接失败: " + err.Error()
+		return "AI Error: " + err.Error()
 	}
 	return resp.Choices[0].Message.Content
 }
 
 func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompletionMessage, bool) {
 	return ProcessAgentStepForWeb(msgs, func(log string) {
-		fmt.Println(log)
+		// CLI 模式下不打印中间日志，保持清爽
 	}, true)
 }
 
@@ -130,7 +124,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		Model: getModelName(),
 		Messages: *msgs, 
 		Tools: Tools, 
-		Temperature: 0.1,
+		Temperature: 0.0,
 	})
 	
 	if err != nil {
@@ -148,11 +142,11 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	// 2. 检测代码块并询问保存 (仅 CLI 模式)
+	// 2. CLI 模式：检测代码块并询问保存
 	if len(isCLI) > 0 && isCLI[0] {
 		filename, content := extractCodeBlock(msg.Content)
 		if filename != "" && content != "" {
-			fmt.Printf("\n\033[36m💾 检测到配置文件/脚本，是否保存为 '%s'? (y/N): \033[0m", filename)
+			fmt.Printf("\n\033[36m💾 检测到配置文件，是否保存为 '%s'? (y/N): \033[0m", filename)
 			reader := bufio.NewReader(os.Stdin)
 			input, _ := reader.ReadString('\n')
 			input = strings.TrimSpace(strings.ToLower(input))
@@ -168,7 +162,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		}
 	}
 
-	// 3. 文本回退机制
+	// 3. 文本回退机制 (自动捕获命令)
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {
@@ -188,25 +182,6 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	}
 
 	return msg, true
-}
-
-// CLI 后处理
-func CheckAndSaveFile(content string) {
-	filename, fileContent := extractCodeBlock(content)
-	if filename != "" && fileContent != "" {
-		fmt.Printf("\n\033[36m💾 检测到配置文件/脚本，是否保存为 '%s'? (y/N): \033[0m", filename)
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(strings.ToLower(input))
-		if input == "y" || input == "yes" {
-			err := os.WriteFile(filename, []byte(fileContent), 0644)
-			if err == nil {
-				fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
-			} else {
-				fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
-			}
-		}
-	}
 }
 
 func handleToolCall(toolCall openai.ToolCall, msgs *[]openai.ChatCompletionMessage, logCallback func(string)) {
@@ -271,56 +246,42 @@ func extractCommandFromText(text string) string {
 
 func extractCodeBlock(text string) (string, string) {
 	re := regexp.MustCompile("(?s)```([a-zA-Z0-9]+)?\\n(.*?)\\n```")
-	matches := re.FindAllStringSubmatch(text, -1)
-	
-	for _, match := range matches {
-		if len(match) < 3 { continue }
-		lang := match[1]
-		content := match[2]
+	matches := re.FindStringSubmatch(text)
+	if len(matches) > 2 {
+		lang := matches[1]
+		content := matches[2]
 		
-		// 1. 行数过滤
-		lines := strings.Split(strings.TrimSpace(content), "\n")
-		if len(lines) < 3 {
-			continue
+		// 1. 垃圾过滤 (日志、报错、HTML)
+		if strings.Contains(content, "PID") || strings.Contains(content, "REPOSITORY") || 
+		   strings.Contains(content, "Mem:") || strings.Contains(content, "Error") || 
+		   strings.Contains(content, "<html>") || strings.Contains(content, "Usage:") {
+			return "", ""
 		}
 
-		// 2. 过滤命令输出
-		if strings.Contains(content, "PID") || 
-		   strings.Contains(content, "REPOSITORY") || 
-		   strings.Contains(content, "Filesystem") || 
-		   strings.Contains(content, "Mem:") ||
-		   strings.Contains(content, "CONTAINER ID") {
-			continue
+		// 2. 教程过滤 (包含执行动作)
+		if strings.Contains(content, "sudo ") || strings.Contains(content, "apt-get") || 
+		   strings.Contains(content, "docker run") || strings.Contains(content, "kubectl apply") {
+			return "", ""
 		}
 
-		// 3. 过滤 Shell 教程
-		if strings.Contains(content, "sudo ") || 
-		   strings.Contains(content, "apt-get") || 
-		   strings.Contains(content, "yum ") || 
-		   strings.Contains(content, "docker run") ||
-		   strings.Contains(content, "kubectl apply") ||
-		   strings.Contains(content, "systemctl") ||
-		   strings.Contains(content, "echo \"") ||
-		   strings.Contains(content, "cat <<EOF") {
-			continue
+		// 3. 特征码匹配 (必须包含这些才是配置文件)
+		isConfig := false
+		if strings.Contains(content, "apiVersion:") || strings.Contains(content, "kind:") { isConfig = true } // K8s
+		if strings.Contains(content, "import ") || strings.Contains(content, "def ") { isConfig = true } // Python
+		if strings.Contains(content, "{") && strings.Contains(content, "}") && strings.Contains(content, ":") { isConfig = true } // JSON
+		
+		if !isConfig {
+			return "", ""
 		}
 
 		filename := "output.txt"
-		if lang == "yaml" || lang == "yml" {
-			filename = "config.yaml"
-		} else if lang == "json" {
-			filename = "config.json"
-		} else if lang == "python" || lang == "py" {
-			filename = "script.py"
-		} else if lang == "sh" || lang == "bash" {
-			filename = "script.sh"
-		}
+		if lang == "yaml" || lang == "yml" { filename = "config.yaml" }
+		if lang == "json" { filename = "config.json" }
+		if lang == "python" || lang == "py" { filename = "script.py" }
 		
 		if strings.Contains(text, ".yaml") {
 			reFile := regexp.MustCompile(`([a-zA-Z0-9_\-]+\.yaml)`)
-			if m := reFile.FindStringSubmatch(text); len(m) > 1 {
-				filename = m[1]
-			}
+			if m := reFile.FindStringSubmatch(text); len(m) > 1 { filename = m[1] }
 		}
 		
 		return filename, content
@@ -344,11 +305,7 @@ func isSafeAutoCommand(cmd string) bool {
 
 	for _, c := range whitelist {
 		if mainCmd == c {
-			if strings.Contains(cmd, "apply") || 
-			   strings.Contains(cmd, "run") || 
-			   strings.Contains(cmd, "exec") || 
-			   strings.Contains(cmd, ">") || 
-			   strings.Contains(cmd, "| bash") {
+			if strings.Contains(cmd, ">") || strings.Contains(cmd, "| bash") || strings.Contains(cmd, "| sh") {
 				return false
 			}
 			return true
