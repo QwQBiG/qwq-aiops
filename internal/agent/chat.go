@@ -56,27 +56,30 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **智能运维专家 (qwq)**。
+	sysPrompt := fmt.Sprintf(`你是一个 **企业级智能运维专家 (qwq)**。
 当前环境：**Linux Server**。
 用户身份：**Root 管理员**。
 
-【行为逻辑】
-1. **判断意图**：
-   - 闲聊 -> 正常回复。
-   - 运维查询 -> 调用工具或输出命令。
-   - 生成文件 -> 输出代码块。
+【严格行为准则】
+1. **查询/操作**：
+   - 必须调用 execute_shell_command 工具。
+   - 如果无法调用，输出纯命令代码块。
+   - **禁止**在命令后附加解释。
 
-2. **输出规则**：
-   - 优先调用 execute_shell_command。
-   - 如果无法调用工具，直接输出命令代码块。
-   - 生成配置文件时，请使用 Markdown 代码块格式。
+2. **文件生成**：
+   - 当用户要求生成配置文件（如 YAML, JSON, Python 脚本）时，**只输出文件内容**。
+   - **禁止**输出 "你可以使用 echo 命令保存..." 这种废话。
+   - **禁止**在生成文件后尝试执行它。
+
+3. **闲聊**：
+   - 正常回复，不要执行任何命令（如 uname, whoami）。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
-		{Role: openai.ChatMessageRoleUser, Content: "你好"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "你好！我是 qwq 智能运维助手。"},
+		
+		// 样本 1: 纯查询
 		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
@@ -84,6 +87,13 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 				ID: "call_1", Type: openai.ToolTypeFunction,
 				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
 			}},
+		},
+
+		// 样本 2: 生成文件
+		{Role: openai.ChatMessageRoleUser, Content: "写一个 hello.py"},
+		{
+			Role: openai.ChatMessageRoleAssistant,
+			Content: "```python\nprint('Hello World')\n```",
 		},
 	}
 }
@@ -139,11 +149,11 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	// 2. 检测代码块并询问保存 (仅 CLI 模式)
+	// 2. 代码块检测 (仅 CLI 模式)
 	if len(isCLI) > 0 && isCLI[0] {
 		filename, content := extractCodeBlock(msg.Content)
 		if filename != "" && content != "" {
-			fmt.Printf("\n\033[36m💾 检测到代码块，是否保存为 '%s'? (y/N): \033[0m", filename)
+			fmt.Printf("\n\033[36m💾 检测到配置文件，是否保存为 '%s'? (y/N): \033[0m", filename)
 			reader := bufio.NewReader(os.Stdin)
 			input, _ := reader.ReadString('\n')
 			input = strings.TrimSpace(strings.ToLower(input))
@@ -155,6 +165,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 					fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
 				}
 			}
+			return msg, true
 		}
 	}
 
@@ -165,7 +176,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 			logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", cmd))
 			output := utils.ExecuteShell(cmd)
 			if strings.TrimSpace(output) == "" { output = "(No output)" }
-
+			
 			feedback := fmt.Sprintf("[System Output]:\n%s", output)
 			*msgs = append(*msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: feedback})
 
@@ -223,20 +234,27 @@ func getModelName() string {
 }
 
 func extractCommandFromText(text string) string {
+	reSingle := regexp.MustCompile("`([^`]+)`")
+	matchesSingle := reSingle.FindAllStringSubmatch(text, -1)
+	for _, m := range matchesSingle {
+		cmd := strings.TrimSpace(m[1])
+		if isSafeAutoCommand(cmd) {
+			return cmd
+		}
+	}
+
 	re := regexp.MustCompile("(?s)```(?:bash|shell|sh)?\\n(.*?)\\n```")
 	matches := re.FindStringSubmatch(text)
 	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
+		lines := strings.Split(matches[1], "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if isSafeAutoCommand(line) {
+				return line
+			}
+		}
 	}
-	reSingle := regexp.MustCompile("`([^`]+)`")
-	matchesSingle := reSingle.FindStringSubmatch(text)
-	if len(matchesSingle) > 1 {
-		return strings.TrimSpace(matchesSingle[1])
-	}
-	lines := strings.Split(strings.TrimSpace(text), "\n")
-	if len(lines) == 1 && isSafeAutoCommand(lines[0]) {
-		return lines[0]
-	}
+	
 	return ""
 }
 
@@ -246,12 +264,11 @@ func extractCodeBlock(text string) (string, string) {
 	if len(matches) > 2 {
 		lang := matches[1]
 		content := matches[2]
-		
-		if strings.Contains(content, "PID") || 
-		   strings.Contains(content, "REPOSITORY") || 
-		   strings.Contains(content, "Filesystem") || 
-		   strings.Contains(content, "Mem:") ||
-		   strings.Contains(content, "CONTAINER ID") {
+
+		if strings.Contains(content, "PID") || strings.Contains(content, "REPOSITORY") || strings.Contains(content, "Mem:") {
+			return "", ""
+		}
+		if strings.HasPrefix(strings.TrimSpace(content), "echo") {
 			return "", ""
 		}
 
@@ -293,7 +310,7 @@ func isSafeAutoCommand(cmd string) bool {
 
 	for _, c := range whitelist {
 		if mainCmd == c {
-			if strings.Contains(cmd, ">") || strings.Contains(cmd, "| bash") || strings.Contains(cmd, "| sh") {
+			if strings.Contains(cmd, "-it") || strings.Contains(cmd, ">") || strings.Contains(cmd, "| bash") {
 				return false
 			}
 			return true
