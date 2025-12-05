@@ -108,13 +108,13 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		if line == "" { continue }
 		
 		safeInput := security.Redact(line)
-		enhancedInput := safeInput + " (Context: Current Linux Server)"
+		enhancedInput := safeInput + " (Context: Local Linux Server. Execute command directly. Do not explain.)"
 		
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 		
 		for i := 0; i < 5; i++ {
 			respMsg, cont := agent.ProcessAgentStep(&messages)
-			
+
 			if respMsg.Content != "" && len(respMsg.ToolCalls) == 0 {
 				r, _ := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(100))
 				out, _ := r.Render(respMsg.Content)

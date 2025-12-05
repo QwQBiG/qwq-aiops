@@ -56,33 +56,23 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **企业级智能运维专家 (qwq)**。
+	sysPrompt := fmt.Sprintf(`你是一个 **Linux 运维执行引擎**。
 当前环境：**Linux Server**。
 用户身份：**Root 管理员**。
 
-【严格行为准则】
-1. **闲聊模式**：
-   - 当用户问 "你好"、"你是谁" 时，**仅进行纯文字回复**。
-   - **严禁** 主动提供代码示例、脚本或教程，除非用户明确要求。
-
-2. **运维查询**：
-   - 必须优先调用 execute_shell_command 工具。
-   - 如果无法调用，直接输出命令。
-
-3. **文件生成**：
-   - 只有当用户明确要求 "生成文件"、"写一个脚本" 时，才输出 Markdown 代码块。
-   - 代码块中**只包含文件内容**。
+【最高指令】
+1. **禁止教学**：严禁列出 Windows/Mac 的操作方法。严禁解释命令含义。
+2. **查询即执行**：用户问“内存”、“负载”、“Docker”，**必须**调用 execute_shell_command。
+3. **文件生成**：用户问“写个yaml”、“生成脚本”，**只输出文件内容**，不要输出 `+"```bash echo ...```"+` 这种创建命令。
+4. **格式**：
+   - 纯命令：直接执行。
+   - 配置文件：输出 Markdown 代码块。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
-		
-		// 样本 1: 纯闲聊
-		{Role: openai.ChatMessageRoleUser, Content: "你好"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "你好！我是 qwq 智能运维助手。"},
 
-		// 样本 2: 运维查询
 		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
@@ -137,7 +127,6 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	msg := resp.Choices[0].Message
 	*msgs = append(*msgs, msg)
 
-	// 1. 处理 Tool Calls
 	if len(msg.ToolCalls) > 0 {
 		for _, toolCall := range msg.ToolCalls {
 			handleToolCall(toolCall, msgs, logCallback)
@@ -145,27 +134,6 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	// 2. 检测代码块并询问保存 (仅 CLI 模式)
-	if len(isCLI) > 0 && isCLI[0] {
-		filename, content := extractCodeBlock(msg.Content)
-		if filename != "" && content != "" {
-			fmt.Printf("\n\033[36m💾 检测到配置文件/脚本，是否保存为 '%s'? (y/N): \033[0m", filename)
-			reader := bufio.NewReader(os.Stdin)
-			input, _ := reader.ReadString('\n')
-			input = strings.TrimSpace(strings.ToLower(input))
-			if input == "y" || input == "yes" {
-				err := os.WriteFile(filename, []byte(content), 0644)
-				if err == nil {
-					fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
-				} else {
-					fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
-				}
-			}
-			return msg, true
-		}
-	}
-
-	// 3. 文本回退机制
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {
@@ -187,20 +155,24 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	return msg, true
 }
 
+
 func CheckAndSaveFile(content string) {
 	filename, fileContent := extractCodeBlock(content)
-	if filename != "" && fileContent != "" {
-		fmt.Printf("\n\033[36m💾 检测到配置文件/脚本，是否保存为 '%s'? (y/N): \033[0m", filename)
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(strings.ToLower(input))
-		if input == "y" || input == "yes" {
-			err := os.WriteFile(filename, []byte(fileContent), 0644)
-			if err == nil {
-				fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
-			} else {
-				fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
-			}
+
+	if filename == "" || fileContent == "" {
+		return
+	}
+
+	fmt.Printf("\n\033[36m💾 检测到配置文件/脚本，是否保存为 '%s'? (y/N): \033[0m", filename)
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(strings.ToLower(input))
+	if input == "y" || input == "yes" {
+		err := os.WriteFile(filename, []byte(fileContent), 0644)
+		if err == nil {
+			fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
+		} else {
+			fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
 		}
 	}
 }
@@ -265,34 +237,33 @@ func extractCommandFromText(text string) string {
 	return ""
 }
 
+
 func extractCodeBlock(text string) (string, string) {
+
 	re := regexp.MustCompile("(?s)```([a-zA-Z0-9]+)?\\n(.*?)\\n```")
-	matches := re.FindStringSubmatch(text)
-	if len(matches) > 2 {
-		lang := matches[1]
-		content := matches[2]
+	matches := re.FindAllStringSubmatch(text, -1)
+	
+	for _, match := range matches {
+		if len(match) < 3 { continue }
+		lang := match[1]
+		content := match[2]
 
-		lines := strings.Split(strings.TrimSpace(content), "\n")
-		if len(lines) < 3 {
-			return "", ""
-		}
-
-		if strings.Contains(content, "PID") || 
-		   strings.Contains(content, "REPOSITORY") || 
-		   strings.Contains(content, "Filesystem") || 
-		   strings.Contains(content, "Mem:") ||
-		   strings.Contains(content, "CONTAINER ID") {
-			return "", ""
-		}
+		if strings.Contains(content, "PID") && strings.Contains(content, "TTY") { return "", "" } // ps
+		if strings.Contains(content, "REPOSITORY") && strings.Contains(content, "IMAGE ID") { return "", "" } // docker images
+		if strings.Contains(content, "CONTAINER ID") && strings.Contains(content, "STATUS") { return "", "" } // docker ps
+		if strings.Contains(content, "Filesystem") && strings.Contains(content, "Mounted on") { return "", "" } // df
+		if strings.Contains(content, "Mem:") && strings.Contains(content, "Swap:") { return "", "" } // free
+		if strings.Contains(content, "load average:") { return "", "" }
 
 		if strings.Contains(content, "sudo ") || 
 		   strings.Contains(content, "apt-get") || 
 		   strings.Contains(content, "yum ") || 
 		   strings.Contains(content, "docker run") ||
+		   strings.Contains(content, "kubectl apply") ||
 		   strings.Contains(content, "systemctl") ||
-		   strings.Contains(content, "python3 ") ||
-		   strings.Contains(content, "echo \"") {
-			return "", ""
+		   strings.Contains(content, "echo \"") ||
+		   strings.Contains(content, "cat <<EOF") {
+			continue
 		}
 
 		filename := "output.txt"
@@ -304,17 +275,24 @@ func extractCodeBlock(text string) (string, string) {
 			filename = "script.py"
 		} else if lang == "sh" || lang == "bash" {
 			filename = "script.sh"
+		} else if lang == "go" {
+			filename = "main.go"
 		}
-		
+
 		if strings.Contains(text, ".yaml") {
 			reFile := regexp.MustCompile(`([a-zA-Z0-9_\-]+\.yaml)`)
 			if m := reFile.FindStringSubmatch(text); len(m) > 1 {
 				filename = m[1]
 			}
+		} else if strings.Contains(text, ".py") {
+			reFile := regexp.MustCompile(`([a-zA-Z0-9_\-]+\.py)`)
+			if m := reFile.FindStringSubmatch(text); len(m) > 1 {
+				filename = m[1]
+			}
 		}
-		
 		return filename, content
 	}
+	
 	return "", ""
 }
 
@@ -329,7 +307,6 @@ func isSafeAutoCommand(cmd string) bool {
 		"netstat", "ss", "lsof", "ip", "ifconfig", 
 		"docker", "kubectl", "systemctl", "service", "journalctl",
 		"whoami", "id", "uname", "date", "history",
-		"hostname",
 	}
 
 	for _, c := range whitelist {
