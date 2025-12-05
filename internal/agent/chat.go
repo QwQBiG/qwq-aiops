@@ -48,16 +48,27 @@ var Tools = []openai.Tool{
 	},
 }
 
+// [核心修复] 平衡型 Prompt：允许闲聊，但运维必须精准
 func GetBaseMessages() []openai.ChatCompletionMessage {
 	knowledgePart := ""
 	if config.CachedKnowledge != "" {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **高级智能运维专家 (你叫qwq-ops你没有其他名字)**。
-当前环境：**Linux Server (Docker Container)**。
+	sysPrompt := fmt.Sprintf(`你是一个 **智能运维专家 (qwq)**。
+当前环境：**Linux Server**。
 用户身份：**Root 管理员**。
 
+【行为逻辑】
+1. **判断意图**：
+   - 如果用户是在 **打招呼/闲聊** (如 "你好", "你是谁") -> **正常用中文回复**，不要输出命令。
+   - 如果用户是在 **询问运维/系统信息** (如 "看内存", "查负载") -> **必须**输出 Shell 命令。
+
+2. **输出规则 (针对运维问题)**：
+   - 优先调用 execute_shell_command 工具。
+   - 如果无法调用工具，直接输出命令代码块，例如：`+"```bash\nfree -m\n```"+`
+   - **禁止** 解释命令含义，直接给结果。
+   
 【思维与行动准则】
 1. **深度诊断**：
    - 当用户问“有没有挂掉”、“检查异常”时，不要只列出正在运行的服务。
@@ -72,30 +83,30 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 3. **语言风格**：
    - 保持专业、亲切、有条理。
    - 可以分段解释，帮助用户理解（用户喜欢这种风格）。
-   - 遇到命令执行结果，必须基于结果进行**分析**，而不是只把结果扔给用户。
+   - 遇到命令执行结果，必须基于结果进行**分析**，而不是只把结果扔给用户
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
-		// --- 样本 1: 深度 Docker 检查 ---
-		{Role: openai.ChatMessageRoleUser, Content: "看看有没有挂掉的容器"},
+		// --- 样本 1: 闲聊 (教它正常说话) ---
+		{Role: openai.ChatMessageRoleUser, Content: "你好"},
+		{Role: openai.ChatMessageRoleAssistant, Content: "你好！我是 qwq 智能运维助手，有什么可以帮你的吗？"},
+
+		// --- 样本 2: 运维 (教它只动手) ---
+		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
 			ToolCalls: []openai.ToolCall{{
 				ID: "call_1", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "docker ps -a --filter 'status=exited'", "reason": "check exited containers"}`},
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
 			}},
 		},
-		{Role: openai.ChatMessageRoleTool, ToolCallID: "call_1", Content: "CONTAINER ID   IMAGE     STATUS\nabc12345       nginx     Exited (1) 2 hours ago"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "我发现了一个异常退出的容器：\n\n- **nginx** (ID: abc12345)：在 2 小时前退出了，退出码是 1（通常表示配置错误）。\n\n建议您使用 `docker logs abc12345` 查看具体报错日志。"},
-
-		// --- 样本 2: K8s 谨慎操作 ---
-		{Role: openai.ChatMessageRoleUser, Content: "帮我部署一个 nginx"},
-		{
-			Role: openai.ChatMessageRoleAssistant,
-			Content: "好的，为了部署 Nginx，我为您准备了一个标准的 Deployment YAML 文件：\n\n```yaml\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: nginx-deployment\n...\n```\n\n您想让我直接应用这个配置吗？或者您可以先检查一下当前的集群状态。"},
+		
+		// --- 样本 3: 文本回退 (针对 3B 模型) ---
+		{Role: openai.ChatMessageRoleUser, Content: "查一下负载"},
+		{Role: openai.ChatMessageRoleAssistant, Content: "```bash\nuptime\n```"},
 	}
 }
 
@@ -153,20 +164,18 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	// 2. 文本回退机制
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
-		// 如果是注释，直接显示
-		if strings.HasPrefix(cmd, "#") {
-			return msg, true
-		}
-
+		// 只有在白名单里的命令才自动执行
 		if isSafeAutoCommand(cmd) {
 			logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", cmd))
 			output := utils.ExecuteShell(cmd)
 			if strings.TrimSpace(output) == "" { output = "(No output)" }
 			
-			feedback := fmt.Sprintf("[System Output]:\n%s", output)
-			*msgs = append(*msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: feedback})
+			finalOutput := fmt.Sprintf("```\n%s\n```", output)
 			
-			return msg, true
+			return openai.ChatCompletionMessage{
+				Role: openai.ChatMessageRoleAssistant,
+				Content: finalOutput,
+			}, false
 		}
 	}
 
@@ -226,7 +235,7 @@ func extractCommandFromText(text string) string {
 	if len(matchesSingle) > 1 {
 		return strings.TrimSpace(matchesSingle[1])
 	}
-	// 只有非常像命令的单行才提取，避免把普通对话当命令
+
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 	if len(lines) == 1 && isSafeAutoCommand(lines[0]) {
 		return lines[0]
