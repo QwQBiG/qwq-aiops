@@ -63,7 +63,7 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 【严格行为准则】
 1. **闲聊模式**：
    - 当用户问 "你好"、"你是谁" 时，**仅进行纯文字回复**。
-   - **绝对禁止** 在闲聊中生成代码、脚本或教程。
+   - **严禁** 主动提供代码示例、脚本或教程，除非用户明确要求。
 
 2. **运维查询**：
    - 必须优先调用 execute_shell_command 工具。
@@ -72,8 +72,6 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 3. **文件生成**：
    - 只有当用户明确要求 "生成文件"、"写一个脚本" 时，才输出 Markdown 代码块。
    - 代码块中**只包含文件内容**。
-   - **禁止**输出 "你可以使用 echo 命令保存..." 这种废话。
-   - **禁止**在生成文件后尝试执行它。
 
 %s`, knowledgePart)
 
@@ -82,7 +80,7 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		
 		// 样本 1: 纯闲聊
 		{Role: openai.ChatMessageRoleUser, Content: "你好"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "你好！我是 qwq 智能运维助手，很高兴为你服务。请问有什么可以帮你的？"},
+		{Role: openai.ChatMessageRoleAssistant, Content: "你好！我是 qwq 智能运维助手。"},
 
 		// 样本 2: 运维查询
 		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
@@ -92,13 +90,6 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 				ID: "call_1", Type: openai.ToolTypeFunction,
 				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
 			}},
-		},
-
-		// 样本 3: 生成文件
-		{Role: openai.ChatMessageRoleUser, Content: "写一个 hello.py"},
-		{
-			Role: openai.ChatMessageRoleAssistant,
-			Content: "```python\nprint('Hello World')\n```",
 		},
 	}
 }
@@ -154,7 +145,27 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	// 2. 文本回退机制
+	// 2. 检测代码块并询问保存 (仅 CLI 模式)
+	if len(isCLI) > 0 && isCLI[0] {
+		filename, content := extractCodeBlock(msg.Content)
+		if filename != "" && content != "" {
+			fmt.Printf("\n\033[36m💾 检测到配置文件/脚本，是否保存为 '%s'? (y/N): \033[0m", filename)
+			reader := bufio.NewReader(os.Stdin)
+			input, _ := reader.ReadString('\n')
+			input = strings.TrimSpace(strings.ToLower(input))
+			if input == "y" || input == "yes" {
+				err := os.WriteFile(filename, []byte(content), 0644)
+				if err == nil {
+					fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
+				} else {
+					fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
+				}
+			}
+			return msg, true
+		}
+	}
+
+	// 3. 文本回退机制
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {
@@ -260,11 +271,27 @@ func extractCodeBlock(text string) (string, string) {
 	if len(matches) > 2 {
 		lang := matches[1]
 		content := matches[2]
-		
-		if strings.Contains(content, "PID") || strings.Contains(content, "REPOSITORY") || strings.Contains(content, "Mem:") || strings.Contains(content, "CONTAINER ID") {
+
+		lines := strings.Split(strings.TrimSpace(content), "\n")
+		if len(lines) < 3 {
 			return "", ""
 		}
-		if strings.Contains(content, "sudo ") || strings.Contains(content, "apt-get") || strings.Contains(content, "yum ") || strings.Contains(content, "docker run") || strings.Contains(content, "systemctl") || strings.Contains(content, "echo \"") {
+
+		if strings.Contains(content, "PID") || 
+		   strings.Contains(content, "REPOSITORY") || 
+		   strings.Contains(content, "Filesystem") || 
+		   strings.Contains(content, "Mem:") ||
+		   strings.Contains(content, "CONTAINER ID") {
+			return "", ""
+		}
+
+		if strings.Contains(content, "sudo ") || 
+		   strings.Contains(content, "apt-get") || 
+		   strings.Contains(content, "yum ") || 
+		   strings.Contains(content, "docker run") ||
+		   strings.Contains(content, "systemctl") ||
+		   strings.Contains(content, "python3 ") ||
+		   strings.Contains(content, "echo \"") {
 			return "", ""
 		}
 
@@ -302,6 +329,7 @@ func isSafeAutoCommand(cmd string) bool {
 		"netstat", "ss", "lsof", "ip", "ifconfig", 
 		"docker", "kubectl", "systemctl", "service", "journalctl",
 		"whoami", "id", "uname", "date", "history",
+		"hostname",
 	}
 
 	for _, c := range whitelist {
