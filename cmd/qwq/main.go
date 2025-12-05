@@ -119,6 +119,8 @@ func runChatMode(cmd *cobra.Command, args []string) {
 				r, _ := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(100))
 				out, _ := r.Render(respMsg.Content)
 				fmt.Print(out)
+
+				agent.CheckAndSaveFile(respMsg.Content)
 			}
 			
 			if !cont { break }
