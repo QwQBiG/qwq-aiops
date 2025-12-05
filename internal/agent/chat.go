@@ -118,7 +118,6 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	msg := resp.Choices[0].Message
 	*msgs = append(*msgs, msg)
 
-
 	if len(msg.ToolCalls) > 0 {
 		for _, toolCall := range msg.ToolCalls {
 			handleToolCall(toolCall, msgs, logCallback)
@@ -126,10 +125,8 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
-
 		if strings.HasPrefix(cmd, "#") {
 			return msg, true
 		}
@@ -140,12 +137,12 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 			if strings.TrimSpace(output) == "" { output = "(No output)" }
 			
 			finalOutput := fmt.Sprintf("```\n%s\n```", output)
+			
 			return openai.ChatCompletionMessage{
 				Role: openai.ChatMessageRoleAssistant,
 				Content: finalOutput,
 			}, false
 		} else {
-
 			return msg, false
 		}
 	}
@@ -195,27 +192,19 @@ func getModelName() string {
 	return DefaultModel
 }
 
-
 func extractCommandFromText(text string) string {
-
 	text = strings.ReplaceAll(text, "```bash", "")
 	text = strings.ReplaceAll(text, "```sh", "")
 	text = strings.ReplaceAll(text, "```", "")
 	text = strings.ReplaceAll(text, "`", "")
 	
-
 	lines := strings.Split(text, "\n")
-	
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" { continue }
-		
-
 		if strings.HasPrefix(line, "#") {
 			return line
 		}
-
-
 		if isSafeAutoCommand(line) {
 			return line
 		}
