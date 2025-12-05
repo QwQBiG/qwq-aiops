@@ -101,7 +101,7 @@ func AnalyzeWithAI(issue string) string {
 	resp, err := Client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: getModelName(),
 		Messages: msgs,
-		Temperature: 0.0, // 绝对理性
+		Temperature: 0.0,
 	})
 	if err != nil {
 		return "AI Error: " + err.Error()
@@ -111,7 +111,7 @@ func AnalyzeWithAI(issue string) string {
 
 func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompletionMessage, bool) {
 	return ProcessAgentStepForWeb(msgs, func(log string) {
-		// CLI 模式下不打印中间日志，保持清爽
+		// CLI 模式下不打印中间日志
 	}, true)
 }
 
@@ -134,7 +134,6 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	msg := resp.Choices[0].Message
 	*msgs = append(*msgs, msg)
 
-	// 1. 处理 Tool Calls
 	if len(msg.ToolCalls) > 0 {
 		for _, toolCall := range msg.ToolCalls {
 			handleToolCall(toolCall, msgs, logCallback)
@@ -142,27 +141,6 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	// 2. CLI 模式：检测代码块并询问保存
-	if len(isCLI) > 0 && isCLI[0] {
-		filename, content := extractCodeBlock(msg.Content)
-		if filename != "" && content != "" {
-			fmt.Printf("\n\033[36m💾 检测到配置文件，是否保存为 '%s'? (y/N): \033[0m", filename)
-			reader := bufio.NewReader(os.Stdin)
-			input, _ := reader.ReadString('\n')
-			input = strings.TrimSpace(strings.ToLower(input))
-			if input == "y" || input == "yes" {
-				err := os.WriteFile(filename, []byte(content), 0644)
-				if err == nil {
-					fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
-				} else {
-					fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
-				}
-			}
-			return msg, true
-		}
-	}
-
-	// 3. 文本回退机制 (自动捕获命令)
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {
@@ -182,6 +160,24 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	}
 
 	return msg, true
+}
+
+func CheckAndSaveFile(content string) {
+	filename, fileContent := extractCodeBlock(content)
+	if filename != "" && fileContent != "" {
+		fmt.Printf("\n\033[36m💾 检测到配置文件，是否保存为 '%s'? (y/N): \033[0m", filename)
+		reader := bufio.NewReader(os.Stdin)
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(strings.ToLower(input))
+		if input == "y" || input == "yes" {
+			err := os.WriteFile(filename, []byte(fileContent), 0644)
+			if err == nil {
+				fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
+			} else {
+				fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
+			}
+		}
+	}
 }
 
 func handleToolCall(toolCall openai.ToolCall, msgs *[]openai.ChatCompletionMessage, logCallback func(string)) {
@@ -251,24 +247,24 @@ func extractCodeBlock(text string) (string, string) {
 		lang := matches[1]
 		content := matches[2]
 		
-		// 1. 垃圾过滤 (日志、报错、HTML)
+		// 1. 垃圾过滤
 		if strings.Contains(content, "PID") || strings.Contains(content, "REPOSITORY") || 
 		   strings.Contains(content, "Mem:") || strings.Contains(content, "Error") || 
 		   strings.Contains(content, "<html>") || strings.Contains(content, "Usage:") {
 			return "", ""
 		}
 
-		// 2. 教程过滤 (包含执行动作)
+		// 2. 教程过滤
 		if strings.Contains(content, "sudo ") || strings.Contains(content, "apt-get") || 
 		   strings.Contains(content, "docker run") || strings.Contains(content, "kubectl apply") {
 			return "", ""
 		}
 
-		// 3. 特征码匹配 (必须包含这些才是配置文件)
+		// 3. 特征码匹配
 		isConfig := false
-		if strings.Contains(content, "apiVersion:") || strings.Contains(content, "kind:") { isConfig = true } // K8s
-		if strings.Contains(content, "import ") || strings.Contains(content, "def ") { isConfig = true } // Python
-		if strings.Contains(content, "{") && strings.Contains(content, "}") && strings.Contains(content, ":") { isConfig = true } // JSON
+		if strings.Contains(content, "apiVersion:") || strings.Contains(content, "kind:") { isConfig = true }
+		if strings.Contains(content, "import ") || strings.Contains(content, "def ") { isConfig = true }
+		if strings.Contains(content, "{") && strings.Contains(content, "}") && strings.Contains(content, ":") { isConfig = true }
 		
 		if !isConfig {
 			return "", ""
