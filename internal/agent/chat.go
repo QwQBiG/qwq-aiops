@@ -1,9 +1,11 @@
 package agent
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"qwq/internal/config"
 	"qwq/internal/utils"
 	"regexp"
@@ -58,27 +60,23 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 当前环境：**Linux Server**。
 用户身份：**Root 管理员**。
 
-【智能判断逻辑】
-1. **闲聊模式**：如果用户问 "你好"、"你是谁"、"天气"，请**正常用中文聊天**，不要输出命令。
-2. **运维模式**：如果用户问 "内存"、"负载"、"Docker"、"Nginx"，**必须**输出 Shell 命令。
-   - 优先调用 execute_shell_command 工具。
-   - 如果无法调用工具，请直接输出命令代码块，例如：`+"```bash\nfree -m\n```"+`
+【行为逻辑】
+1. **判断意图**：
+   - 闲聊 -> 正常回复。
+   - 运维查询 -> 调用工具或输出命令。
+   - 生成文件 -> 输出代码块。
 
-【回答规范】
-- 遇到运维问题，**少废话，多干活**。
-- 不要解释命令的含义，除非用户明确问 "这是什么意思"。
-- 严禁编造不存在的命令。
+2. **输出规则**：
+   - 优先调用 execute_shell_command。
+   - 如果无法调用工具，直接输出命令代码块。
+   - 生成配置文件时，请使用 Markdown 代码块格式。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
-		
-		// 样本 1: 闲聊
 		{Role: openai.ChatMessageRoleUser, Content: "你好"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "你好！我是 qwq 智能运维助手，有什么可以帮你的吗？"},
-
-		// 样本 2: 运维
+		{Role: openai.ChatMessageRoleAssistant, Content: "你好！我是 qwq 智能运维助手。"},
 		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
@@ -111,10 +109,10 @@ func AnalyzeWithAI(issue string) string {
 func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompletionMessage, bool) {
 	return ProcessAgentStepForWeb(msgs, func(log string) {
 		fmt.Println(log)
-	})
+	}, true)
 }
 
-func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback func(string)) (openai.ChatCompletionMessage, bool) {
+func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback func(string), isCLI ...bool) (openai.ChatCompletionMessage, bool) {
 	ctx := context.Background()
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -123,7 +121,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		Model: getModelName(),
 		Messages: *msgs, 
 		Tools: Tools, 
-		Temperature: 0.1, 
+		Temperature: 0.1,
 	})
 	
 	if err != nil {
@@ -133,7 +131,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	msg := resp.Choices[0].Message
 	*msgs = append(*msgs, msg)
 
-	// 1. 优先处理 Tool Calls
+	// 1. 处理 Tool Calls
 	if len(msg.ToolCalls) > 0 {
 		for _, toolCall := range msg.ToolCalls {
 			handleToolCall(toolCall, msgs, logCallback)
@@ -141,7 +139,26 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	// 2. 文本回退机制
+	// 2. 检测代码块并询问保存
+	if len(isCLI) > 0 && isCLI[0] {
+		filename, content := extractCodeBlock(msg.Content)
+		if filename != "" && content != "" {
+			fmt.Printf("\n\033[36m💾 检测到代码块，是否保存为 '%s'? (y/N): \033[0m", filename)
+			reader := bufio.NewReader(os.Stdin)
+			input, _ := reader.ReadString('\n')
+			input = strings.TrimSpace(strings.ToLower(input))
+			if input == "y" || input == "yes" {
+				err := os.WriteFile(filename, []byte(content), 0644)
+				if err == nil {
+					fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
+				} else {
+					fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
+				}
+			}
+		}
+	}
+
+	// 3. 文本回退机制
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {
@@ -149,10 +166,11 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 			output := utils.ExecuteShell(cmd)
 			if strings.TrimSpace(output) == "" { output = "(No output)" }
 			
-			feedback := fmt.Sprintf("[System Output]:\n%s", output)
-			*msgs = append(*msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: feedback})
-			
-			return msg, true 
+			finalOutput := fmt.Sprintf("```\n%s\n```", output)
+			return openai.ChatCompletionMessage{
+				Role: openai.ChatMessageRoleAssistant,
+				Content: finalOutput,
+			}, false
 		}
 	}
 
@@ -217,6 +235,36 @@ func extractCommandFromText(text string) string {
 		return lines[0]
 	}
 	return ""
+}
+
+func extractCodeBlock(text string) (string, string) {
+	re := regexp.MustCompile("(?s)```([a-zA-Z0-9]+)?\\n(.*?)\\n```")
+	matches := re.FindStringSubmatch(text)
+	if len(matches) > 2 {
+		lang := matches[1]
+		content := matches[2]
+		
+		filename := "output.txt"
+		if lang == "yaml" || lang == "yml" {
+			filename = "config.yaml"
+		} else if lang == "json" {
+			filename = "config.json"
+		} else if lang == "python" || lang == "py" {
+			filename = "script.py"
+		} else if lang == "sh" || lang == "bash" {
+			filename = "script.sh"
+		}
+		
+		if strings.Contains(text, ".yaml") {
+			reFile := regexp.MustCompile(`([a-zA-Z0-9_\-]+\.yaml)`)
+			if m := reFile.FindStringSubmatch(text); len(m) > 1 {
+				filename = m[1]
+			}
+		}
+		
+		return filename, content
+	}
+	return "", ""
 }
 
 func isSafeAutoCommand(cmd string) bool {
