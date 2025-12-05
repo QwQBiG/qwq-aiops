@@ -62,8 +62,8 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 
 【严格行为准则】
 1. **闲聊模式**：
-   - 当用户问 "你好"、"你是谁" 时，**仅进行文字回复**。
-   - **绝对禁止** 在闲聊中生成代码、脚本或教程。
+   - 当用户问 "你好"、"你是谁" 时，**仅进行纯文字回复**。
+   - **绝对禁止** 在闲聊中生成代码、脚本或教程。不要教用户怎么写 Python！
 
 2. **运维查询**：
    - 必须优先调用 execute_shell_command 工具。
@@ -71,7 +71,9 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 
 3. **文件生成**：
    - 只有当用户明确要求 "生成文件"、"写一个脚本" 时，才输出 Markdown 代码块。
-   - 代码块中**只包含文件内容**，不要包含安装命令（如 sudo apt install）。
+   - 代码块中**只包含文件内容**。
+   - **禁止**输出 "你可以使用 echo 命令保存..." 这种废话。
+   - **禁止**在生成文件后尝试执行它。
 
 %s`, knowledgePart)
 
@@ -121,6 +123,7 @@ func AnalyzeWithAI(issue string) string {
 
 func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompletionMessage, bool) {
 	return ProcessAgentStepForWeb(msgs, func(log string) {
+		fmt.Println(log)
 	}, true)
 }
 
@@ -143,6 +146,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	msg := resp.Choices[0].Message
 	*msgs = append(*msgs, msg)
 
+	// 1. 处理 Tool Calls
 	if len(msg.ToolCalls) > 0 {
 		for _, toolCall := range msg.ToolCalls {
 			handleToolCall(toolCall, msgs, logCallback)
@@ -150,6 +154,27 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
+	// 2. 代码块检测 (仅 CLI 模式)
+	if len(isCLI) > 0 && isCLI[0] {
+		filename, content := extractCodeBlock(msg.Content)
+		if filename != "" && content != "" {
+			fmt.Printf("\n\033[36m💾 检测到配置文件/脚本，是否保存为 '%s'? (y/N): \033[0m", filename)
+			reader := bufio.NewReader(os.Stdin)
+			input, _ := reader.ReadString('\n')
+			input = strings.TrimSpace(strings.ToLower(input))
+			if input == "y" || input == "yes" {
+				err := os.WriteFile(filename, []byte(content), 0644)
+				if err == nil {
+					fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
+				} else {
+					fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
+				}
+			}
+			return msg, true
+		}
+	}
+
+	// 3. 文本回退机制 (自动捕获命令)
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {
@@ -169,24 +194,6 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	}
 
 	return msg, true
-}
-
-func CheckAndSaveFile(content string) {
-	filename, fileContent := extractCodeBlock(content)
-	if filename != "" && fileContent != "" {
-		fmt.Printf("\n\033[36m💾 检测到配置文件/脚本，是否保存为 '%s'? (y/N): \033[0m", filename)
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(strings.ToLower(input))
-		if input == "y" || input == "yes" {
-			err := os.WriteFile(filename, []byte(fileContent), 0644)
-			if err == nil {
-				fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
-			} else {
-				fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
-			}
-		}
-	}
 }
 
 func handleToolCall(toolCall openai.ToolCall, msgs *[]openai.ChatCompletionMessage, logCallback func(string)) {
@@ -232,20 +239,29 @@ func getModelName() string {
 }
 
 func extractCommandFromText(text string) string {
+	// 优先匹配单行命令块 `cmd`
+	reSingle := regexp.MustCompile("`([^`]+)`")
+	matchesSingle := reSingle.FindAllStringSubmatch(text, -1)
+	for _, m := range matchesSingle {
+		cmd := strings.TrimSpace(m[1])
+		if isSafeAutoCommand(cmd) {
+			return cmd
+		}
+	}
+
+	// 匹配多行代码块
 	re := regexp.MustCompile("(?s)```(?:bash|shell|sh)?\\n(.*?)\\n```")
 	matches := re.FindStringSubmatch(text)
 	if len(matches) > 1 {
-		return strings.TrimSpace(matches[1])
+		lines := strings.Split(matches[1], "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if isSafeAutoCommand(line) {
+				return line
+			}
+		}
 	}
-	reSingle := regexp.MustCompile("`([^`]+)`")
-	matchesSingle := reSingle.FindStringSubmatch(text)
-	if len(matchesSingle) > 1 {
-		return strings.TrimSpace(matchesSingle[1])
-	}
-	lines := strings.Split(strings.TrimSpace(text), "\n")
-	if len(lines) == 1 && isSafeAutoCommand(lines[0]) {
-		return lines[0]
-	}
+	
 	return ""
 }
 
@@ -255,15 +271,23 @@ func extractCodeBlock(text string) (string, string) {
 	if len(matches) > 2 {
 		lang := matches[1]
 		content := matches[2]
-
-		if strings.Contains(content, "PID") || strings.Contains(content, "REPOSITORY") || strings.Contains(content, "Mem:") {
+		
+		// 1. 过滤命令输出
+		if strings.Contains(content, "PID") || 
+		   strings.Contains(content, "REPOSITORY") || 
+		   strings.Contains(content, "Filesystem") || 
+		   strings.Contains(content, "Mem:") ||
+		   strings.Contains(content, "CONTAINER ID") {
 			return "", ""
 		}
+
+		// 2. 过滤 Shell 教程
 		if strings.Contains(content, "sudo ") || 
 		   strings.Contains(content, "apt-get") || 
 		   strings.Contains(content, "yum ") || 
 		   strings.Contains(content, "docker run") ||
-		   strings.Contains(content, "systemctl") {
+		   strings.Contains(content, "systemctl") ||
+		   strings.Contains(content, "echo \"") {
 			return "", ""
 		}
 
@@ -291,6 +315,10 @@ func extractCodeBlock(text string) (string, string) {
 }
 
 func isSafeAutoCommand(cmd string) bool {
+	if strings.Contains(cmd, "\n") {
+		return false
+	}
+
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 { return false }
 	mainCmd := parts[0]
@@ -305,7 +333,11 @@ func isSafeAutoCommand(cmd string) bool {
 
 	for _, c := range whitelist {
 		if mainCmd == c {
-			if strings.Contains(cmd, ">") || strings.Contains(cmd, "| bash") || strings.Contains(cmd, "| sh") {
+			if strings.Contains(cmd, "-it") || 
+			   strings.Contains(cmd, ">") || 
+			   strings.Contains(cmd, "| bash") || 
+			   strings.Contains(cmd, "&&") || 
+			   strings.Contains(cmd, ";") {
 				return false
 			}
 			return true
