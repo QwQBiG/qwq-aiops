@@ -151,13 +151,14 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 		_, msg, err := conn.ReadMessage()
 		if err != nil { break }
 		input := string(msg)
-
-		enhancedInput := input + " (Context: Linux Server. If checking status, use flags like -a to see everything. Analyze the output.)"
+		
+		enhancedInput := input + " (Context: Current Linux Server)"
 		
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 
 		for i := 0; i < 5; i++ {
 			conn.WriteJSON(map[string]string{"type": "status", "content": "🤖 思考中..."})
+			
 			respMsg, cont := agent.ProcessAgentStepForWeb(&messages, func(log string) {
 				conn.WriteJSON(map[string]string{"type": "log", "content": log})
 			})

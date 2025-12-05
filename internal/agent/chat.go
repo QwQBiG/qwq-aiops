@@ -39,7 +39,7 @@ var Tools = []openai.Tool{
 			Parameters: json.RawMessage(`{
 				"type": "object",
 				"properties": {
-					"command": { "type": "string", "description": "The shell command" },
+					"command": { "type": "string", "description": "The shell command (e.g., 'free -m', 'uptime', 'df -h')" },
 					"reason": { "type": "string", "description": "The reason" }
 				},
 				"required": ["command", "reason"]
@@ -48,7 +48,6 @@ var Tools = []openai.Tool{
 	},
 }
 
-// [核心修复] 平衡型 Prompt：允许闲聊，但运维必须精准
 func GetBaseMessages() []openai.ChatCompletionMessage {
 	knowledgePart := ""
 	if config.CachedKnowledge != "" {
@@ -59,42 +58,27 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 当前环境：**Linux Server**。
 用户身份：**Root 管理员**。
 
-【行为逻辑】
-1. **判断意图**：
-   - 如果用户是在 **打招呼/闲聊** (如 "你好", "你是谁") -> **正常用中文回复**，不要输出命令。
-   - 如果用户是在 **询问运维/系统信息** (如 "看内存", "查负载") -> **必须**输出 Shell 命令。
-
-2. **输出规则 (针对运维问题)**：
+【智能判断逻辑】
+1. **闲聊模式**：如果用户问 "你好"、"你是谁"、"天气"，请**正常用中文聊天**，不要输出命令。
+2. **运维模式**：如果用户问 "内存"、"负载"、"Docker"、"Nginx"，**必须**输出 Shell 命令。
    - 优先调用 execute_shell_command 工具。
-   - 如果无法调用工具，直接输出命令代码块，例如：`+"```bash\nfree -m\n```"+`
-   - **禁止** 解释命令含义，直接给结果。
-   
-【思维与行动准则】
-1. **深度诊断**：
-   - 当用户问“有没有挂掉”、“检查异常”时，不要只列出正在运行的服务。
-   - **Docker**：必须使用 'docker ps -a' 查看所有容器（包括退出的），并关注 'Exited' 状态。
-   - **K8s**：必须检查 'kubectl get pods -A' 并关注非 'Running' 的 Pod。
-   - **系统**：关注 'dmesg' 或 '/var/log/syslog' 中的 Error。
+   - 如果无法调用工具，请直接输出命令代码块，例如：`+"```bash\nfree -m\n```"+`
 
-2. **K8s 操作规范**：
-   - 在生成 YAML 或执行 K8s 命令前，先确认环境是否有 kubectl 权限。
-   - 生成 YAML 后，不要直接 Apply，而是展示给用户看，或者询问是否执行。
-
-3. **语言风格**：
-   - 保持专业、亲切、有条理。
-   - 可以分段解释，帮助用户理解（用户喜欢这种风格）。
-   - 遇到命令执行结果，必须基于结果进行**分析**，而不是只把结果扔给用户
+【回答规范】
+- 遇到运维问题，**少废话，多干活**。
+- 不要解释命令的含义，除非用户明确问 "这是什么意思"。
+- 严禁编造不存在的命令。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
-		// --- 样本 1: 闲聊 (教它正常说话) ---
+		// 样本 1: 闲聊
 		{Role: openai.ChatMessageRoleUser, Content: "你好"},
 		{Role: openai.ChatMessageRoleAssistant, Content: "你好！我是 qwq 智能运维助手，有什么可以帮你的吗？"},
 
-		// --- 样本 2: 运维 (教它只动手) ---
+		// 样本 2: 运维
 		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
@@ -103,10 +87,6 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
 			}},
 		},
-		
-		// --- 样本 3: 文本回退 (针对 3B 模型) ---
-		{Role: openai.ChatMessageRoleUser, Content: "查一下负载"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "```bash\nuptime\n```"},
 	}
 }
 
@@ -164,7 +144,6 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	// 2. 文本回退机制
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
-		// 只有在白名单里的命令才自动执行
 		if isSafeAutoCommand(cmd) {
 			logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", cmd))
 			output := utils.ExecuteShell(cmd)
@@ -172,10 +151,10 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 			
 			finalOutput := fmt.Sprintf("```\n%s\n```", output)
 			
-			return openai.ChatCompletionMessage{
-				Role: openai.ChatMessageRoleAssistant,
-				Content: finalOutput,
-			}, false
+			feedback := fmt.Sprintf("[System Output]:\n%s", output)
+			*msgs = append(*msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: feedback})
+			
+			return msg, true 
 		}
 	}
 
@@ -235,7 +214,6 @@ func extractCommandFromText(text string) string {
 	if len(matchesSingle) > 1 {
 		return strings.TrimSpace(matchesSingle[1])
 	}
-
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 	if len(lines) == 1 && isSafeAutoCommand(lines[0]) {
 		return lines[0]

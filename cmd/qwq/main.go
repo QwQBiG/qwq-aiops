@@ -108,8 +108,7 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		if line == "" { continue }
 		
 		safeInput := security.Redact(line)
-
-		enhancedInput := fmt.Sprintf("[SYSTEM COMMAND] User Request: '%s'. EXECUTE TOOL NOW. NO TALKING.", safeInput)
+		enhancedInput := safeInput + " (Context: Current Linux Server)"
 		
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 		
