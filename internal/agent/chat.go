@@ -139,7 +139,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	// 2. 检测代码块并询问保存
+	// 2. 检测代码块并询问保存 (仅 CLI 模式)
 	if len(isCLI) > 0 && isCLI[0] {
 		filename, content := extractCodeBlock(msg.Content)
 		if filename != "" && content != "" {
@@ -158,14 +158,17 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		}
 	}
 
-	// 3. 文本回退机制
+	// 3. 文本回退机制 (自动捕获命令)
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {
 			logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", cmd))
 			output := utils.ExecuteShell(cmd)
 			if strings.TrimSpace(output) == "" { output = "(No output)" }
-			
+
+			feedback := fmt.Sprintf("[System Output]:\n%s", output)
+			*msgs = append(*msgs, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: feedback})
+
 			finalOutput := fmt.Sprintf("```\n%s\n```", output)
 			return openai.ChatCompletionMessage{
 				Role: openai.ChatMessageRoleAssistant,
@@ -244,6 +247,14 @@ func extractCodeBlock(text string) (string, string) {
 		lang := matches[1]
 		content := matches[2]
 		
+		if strings.Contains(content, "PID") || 
+		   strings.Contains(content, "REPOSITORY") || 
+		   strings.Contains(content, "Filesystem") || 
+		   strings.Contains(content, "Mem:") ||
+		   strings.Contains(content, "CONTAINER ID") {
+			return "", ""
+		}
+
 		filename := "output.txt"
 		if lang == "yaml" || lang == "yml" {
 			filename = "config.yaml"

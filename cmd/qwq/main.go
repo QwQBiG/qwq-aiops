@@ -114,13 +114,14 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		
 		for i := 0; i < 5; i++ {
 			respMsg, cont := agent.ProcessAgentStep(&messages)
-			if !cont { break }
+
 			if respMsg.Content != "" && len(respMsg.ToolCalls) == 0 {
 				r, _ := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(100))
 				out, _ := r.Render(respMsg.Content)
 				fmt.Print(out)
-				break
 			}
+			
+			if !cont { break }
 		}
 	}
 }
