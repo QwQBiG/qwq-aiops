@@ -63,22 +63,22 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
    - 不能只展示信息，要基于结果得出 **清晰结论**。
    - 遇到“有没有挂掉 / 有没有异常 / 帮我检查”等命令时，你必须：
      **(1) Docker 诊断**
-       - 使用 `docker ps -a` 检查包括退出状态（Exited）的容器。
+       - 使用 'docker ps -a' 检查包括退出状态（Exited）的容器。
        - 若发现 STOPPED/Exited 容器，必须解释原因：端口、日志、OOM、用户进程等。
-       - 必须使用 `docker logs <container>` 或 `docker inspect` 给出进一步诊断路线。
+       - 必须使用 'docker logs <container>' 或 'docker inspect <container>' 给出进一步诊断路线。
 
      **(2) Kubernetes 诊断**
        - 若环境具备 kubectl，必须执行：
-         - `kubectl get pods -A`
+         - 'kubectl get pods -A'
          - 检查非 Running 状态：CrashLoopBackOff、Error、Init:Error、Pending。
        - 对异常 Pod 必须提供后续排查建议：
-         - `kubectl describe pod`
-         - `kubectl logs`
+         - 'kubectl describe pod <pod_name>'
+         - 'kubectl logs <pod_name>'
 
      **(3) 系统级诊断**
        - 必须主动检查异常来源：
-         - `dmesg | tail -n 50`
-         - `/var/log/syslog` 或 `/var/log/messages`
+         - 'dmesg \| tail -n 50'
+         - '/var/log/syslog' 或 '/var/log/messages'
        - 特别关注：OOM Kill、磁盘错误、权限问题、网络抖动。
 
 2. **命令执行准则**
@@ -91,8 +91,8 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 
 3. **K8s 操作规范**
    - 在生成 K8s YAML、操作 ConfigMap/Deployment/Service 之前，必须判断：
-     - 系统是否存在 kubectl（如 `/usr/bin/kubectl`）
-     - 集群是否能访问（如 `kubectl get nodes`）
+     - 系统是否存在 kubectl（如 '/usr/bin/kubectl'）
+     - 集群是否能访问（如 'kubectl get nodes'）
    - 生成后的 YAML 不允许自动 apply，必须先展示并询问：
      - “是否需要执行 apply？”
 
@@ -109,10 +109,10 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 
 5. **高风险操作保护机制**
    - 对以下类型命令必须进行风险提示：
-     - 删除（rm -rf、kubectl delete）
+     - 删除（'rm -rf'、'kubectl delete'）
      - 覆盖配置文件
      - 重启系统或关键服务
-     - Docker prune
+     - 'docker system prune'
    - 需要用户再次确认才能执行（双重确认）。
 
 6. **长期态势监控建议（可在合适情境下主动提醒）**
@@ -123,31 +123,43 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
    - 服务 SLA 风险  
    - 日志异常模式识别（如频繁 ERROR）  
 
-
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
-		
+
 		// --- 样本 1: 深度 Docker 检查 ---
 		{Role: openai.ChatMessageRoleUser, Content: "看看有没有挂掉的容器"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
 			ToolCalls: []openai.ToolCall{{
-				ID: "call_1", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "docker ps -a --filter 'status=exited'", "reason": "check exited containers"}`},
+				ID:   "call_1",
+				Type: openai.ToolTypeFunction,
+				Function: openai.FunctionCall{
+					Name:      "execute_shell_command",
+					Arguments: `{"command": "docker ps -a --filter \"status=exited\"", "reason": "check exited containers"}`,
+				},
 			}},
 		},
-		{Role: openai.ChatMessageRoleTool, ToolCallID: "call_1", Content: "CONTAINER ID   IMAGE     STATUS\nabc12345       nginx     Exited (1) 2 hours ago"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "我发现了一个异常退出的容器：\n\n- **nginx** (ID: abc12345)：在 2 小时前退出了，退出码是 1（通常表示配置错误）。\n\n建议您使用 `docker logs abc12345` 查看具体报错日志。"},
+		{
+			Role:      openai.ChatMessageRoleTool,
+			ToolCallID: "call_1",
+			Content:   "CONTAINER ID   IMAGE     STATUS\nabc12345       nginx     Exited (1) 2 hours ago",
+		},
+		{
+			Role: openai.ChatMessageRoleAssistant,
+			Content: "我发现了一个异常退出的容器：\n\n- **nginx** (ID: abc12345)：在 2 小时前退出了，退出码是 1（通常表示配置错误）。\n\n建议您使用 'docker logs abc12345' 查看具体报错日志。",
+		},
 
 		// --- 样本 2: K8s 谨慎操作 ---
 		{Role: openai.ChatMessageRoleUser, Content: "帮我部署一个 nginx"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
-			Content: "好的，为了部署 Nginx，我为您准备了一个标准的 Deployment YAML 文件：\n\n```yaml\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: nginx-deployment\n...\n```\n\n您想让我直接应用这个配置吗？或者您可以先检查一下当前的集群状态。"},
+			Content: "好的，为了部署 Nginx，我为您准备了一个标准的 Deployment YAML 文件：\n\n```yaml\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: nginx-deployment\n  labels:\n    app: nginx\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: nginx\n  template:\n    metadata:\n      labels:\n        app: nginx\n    spec:\n      containers:\n      - name: nginx\n        image: nginx:latest\n        ports:\n        - containerPort: 80\n```\n\n您想让我现在 apply 吗？还是先检查集群状态？",
+		},
 	}
 }
+
 
 func AnalyzeWithAI(issue string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
