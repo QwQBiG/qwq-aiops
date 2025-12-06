@@ -8,7 +8,9 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 	"qwq/internal/agent"
 	"qwq/internal/config"
 	"qwq/internal/logger"
@@ -17,10 +19,6 @@ import (
 	"qwq/internal/notify"
 	"sort"
 	"strconv"
-	"strings"
-	"sync"
-	"time"
-	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
 	openai "github.com/sashabaranov/go-openai"
@@ -63,66 +61,12 @@ type DockerContainer struct {
 	State   string `json:"state"`
 }
 
-const MountPoint = "/hostfs"
-
-var BlockList = []string{
-	"/proc",
-	"/sys",
-	"/dev",
-	"/boot",
-}
-
-func Start(port string) {
-	var err error
-	logFile, err = os.OpenFile("qwq.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Printf("无法创建日志文件: %v\n", err)
-	}
-
-	go collectStatsLoop()
-
-	distFS, err := fs.Sub(frontendDist, "dist")
-	if err != nil {
-		logger.Info("⚠️ 前端资源加载异常: %v", err)
-	} else {
-		fileServer := http.FileServer(http.FS(distFS))
-		http.Handle("/assets/", fileServer)
-		http.HandleFunc("/", basicAuth(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws/") {
-				return 
-			}
-			fileServer.ServeHTTP(w, r)
-		}))
-	}
-
-	http.HandleFunc("/api/logs", basicAuth(handleLogs))
-	http.HandleFunc("/api/stats", basicAuth(handleStats))
-	http.HandleFunc("/api/trigger", basicAuth(handleTrigger))
-	http.HandleFunc("/api/containers", basicAuth(handleContainers))
-	http.HandleFunc("/api/container/action", basicAuth(handleContainerAction))
-
-	http.HandleFunc("/api/files/list", basicAuth(handleFileList))
-	http.HandleFunc("/api/files/content", basicAuth(handleFileContent))
-	http.HandleFunc("/api/files/save", basicAuth(handleFileSave))
-	http.HandleFunc("/api/files/action", basicAuth(handleFileAction))
-
-	http.HandleFunc("/ws/chat", basicAuth(handleWSChat))
-
-	logger.Info("🚀 qwq Dashboard started at http://localhost" + port)
-	if config.GlobalConfig.WebUser != "" {
-		logger.Info("🔒 安全模式已开启 (Basic Auth)")
-	}
-
-	if err := http.ListenAndServe(port, nil); err != nil {
-		fmt.Printf("Web Server Error: %v\n", err)
-	}
-}
-
+// --- 巡检逻辑 ---
 func performPatrol() {
 	logger.Info("正在执行系统巡检...")
 	var anomalies []string
 
-	// 1. 磁盘检查：不再依赖 grep，改用 Go 代码逐行过滤
+	// 1. 磁盘检查
 	diskOut := utils.ExecuteShell("df -h")
 	diskLines := strings.Split(diskOut, "\n")
 	
@@ -200,6 +144,8 @@ func performPatrol() {
 		logger.Info("✔ 系统健康")
 	}
 }
+
+// --- 其他 Handlers ---
 
 func handleContainers(w http.ResponseWriter, r *http.Request) {
 	cmd := `docker ps -a --format "{{.ID}}|{{.Image}}|{{.Status}}|{{.Names}}"`
@@ -314,31 +260,4 @@ func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func sendSystemStatus() {
-	hostname := utils.GetHostname()
-	ip := strings.TrimSpace(utils.ExecuteShell("ip route get 1 | awk '{print $7; exit}'"))
-	uptime := strings.TrimSpace(utils.ExecuteShell("uptime -p"))
-	memInfo := strings.TrimSpace(utils.ExecuteShell("free -m | awk 'NR==2{printf \"%.1f%% (已用 %sM / 总计 %sM)\", $3/$2*100, $3, $2}'"))
-	diskInfo := strings.TrimSpace(utils.ExecuteShell("df -h / | awk 'NR==2 {print $5 \" (剩余 \" $4 \")\"}'"))
-	loadInfo := strings.TrimSpace(utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }'"))
-	report := fmt.Sprintf(`### 📊 服务器状态日报 [%s]
-
-> **IP**: %s
-> **运行**: %s
-
----
-
-| 指标 | 状态 |
-| :--- | :--- |
-| **CPU负载** | %s |
-| **内存使用** | %s |
-| **系统磁盘** | %s |
-| **TCP连接** | %s |
-
----
-*qwq AIOps 自动监控*
-`, hostname, ip, uptime, loadInfo, memInfo, diskInfo,
-		strings.TrimSpace(utils.ExecuteShell("netstat -ant | grep ESTABLISHED | wc -l")))
-	notify.Send("服务器状态日报", report)
-	logger.Info("✅ 健康日报已发送")
-}
+func WebLog(msg string) { logger.Info(msg) }
