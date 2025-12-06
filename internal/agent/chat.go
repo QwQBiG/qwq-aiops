@@ -89,13 +89,28 @@ func GetQuickCommand(input string) string {
 // 静态规则拦截器
 func CheckStaticResponse(input string) string {
 	input = strings.ToLower(strings.TrimSpace(input))
-	if input == "你好" || input == "你是谁" || input == "版本" || input == "version" || input == "whoami" {
-		return fmt.Sprintf("qwq-aiops %s (Linux Operations Agent)", Version)
+	if input == "你好" || input == "你是谁" || input == "版本" || input == "version" || input == "whoami"
+	{
+		return fmt.Sprintf(`**qwq-aiops %s**
+--------------------------------
+我是您的私有化智能运维专家。
+
+**核心能力：**
+1. 🛠️ **自动巡检**：监控系统负载、Docker、K8s 状态。
+2. ⚡ **命令执行**：直接执行 "看看内存"、"查负载"。
+3. 📝 **配置生成**：生成 YAML、Python 脚本。
+4. 🔒 **安全风控**：高危命令自动拦截。
+
+*请直接下达运维指令，例如：“看看内存” 或 “生成 nginx yaml”。*`, Version)
 	}
-	if input == "help" || input == "帮助" {
-		return "支持指令：看看内存、查负载、看Docker、生成nginx配置..."
+
+	if input == "help" || input == "帮助" || input == "能做什么" {
+		return `**可用指令示例：**
+- 🔍 **查询**：看看内存、查负载、看Docker容器、看K8s Pod
+- ⚙️ **操作**：重启 nginx (需确认)、清理磁盘
+- 📄 **生成**：写一个 busybox yaml、生成 python hello world
+- 📊 **报表**：生成系统状态日报`
 	}
-	return ""
 }
 
 func GetBaseMessages() []openai.ChatCompletionMessage {
