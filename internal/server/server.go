@@ -353,9 +353,10 @@ func performPatrol() {
 		}
 	}
 
-	// 过滤
+	// --- 额外过滤 loop 设备 ---
 	var cleanedAnomalies []string
 	for _, anomaly := range anomalies {
+		// 确保排除掉 loop、snap、overlay 相关的磁盘信息
 		if !strings.Contains(anomaly, "/dev/loop") && 
 		   !strings.Contains(anomaly, "/snap") && 
 		   !strings.Contains(anomaly, "overlay") {
@@ -363,7 +364,6 @@ func performPatrol() {
 		}
 	}
 
-	// 发送告警
 	if len(cleanedAnomalies) > 0 {
 		report := strings.Join(cleanedAnomalies, "\n")
 		logger.Info("🚨 发现异常，正在请求 AI 分析...")
