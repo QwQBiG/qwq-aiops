@@ -106,7 +106,8 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		line, _ := rl.Readline()
 		if line == "exit" { break }
 		if line == "" { continue }
-
+		
+		// 1. 静态规则
 		staticResp := agent.CheckStaticResponse(line)
 		if staticResp != "" {
 			r, _ := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(100))
@@ -115,6 +116,16 @@ func runChatMode(cmd *cobra.Command, args []string) {
 			continue
 		}
 
+		// 2. 关键词速查
+		quickCmd := agent.GetQuickCommand(line)
+		if quickCmd != "" {
+			fmt.Printf("\033[90m⚡ 快速执行: %s\033[0m\n", quickCmd)
+			output := utils.ExecuteShell(quickCmd)
+			if strings.TrimSpace(output) == "" { output = "(No output)" }
+			fmt.Println(output)
+			continue
+		}
+		
 		safeInput := security.Redact(line)
 		enhancedInput := safeInput + " (Context: Current Linux Server)"
 		

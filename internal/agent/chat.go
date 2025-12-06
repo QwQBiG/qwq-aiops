@@ -1,16 +1,16 @@
 package agent
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"qwq/internal/config"
 	"qwq/internal/utils"
 	"regexp"
 	"strings"
 	"time"
-	"bufio"
-	"os"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -18,7 +18,7 @@ import (
 const (
 	DefaultModel   = "Qwen/Qwen2.5-7B-Instruct"
 	DefaultBaseURL = "https://api.siliconflow.cn/v1"
-	Version        = "v3.1.0 Enterprise"
+	Version        = "v3.2.0 Enterprise"
 )
 
 var Client *openai.Client
@@ -51,34 +51,50 @@ var Tools = []openai.Tool{
 	},
 }
 
-// 拦截器
+func GetQuickCommand(input string) string {
+	input = strings.ToLower(input)
+	
+	// 内存
+	if strings.Contains(input, "内存") || strings.Contains(input, "memory") {
+		return "free -h"
+	}
+	// 磁盘
+	if strings.Contains(input, "磁盘") || strings.Contains(input, "硬盘") || strings.Contains(input, "disk") {
+		return "df -h"
+	}
+	// 负载/CPU
+	if strings.Contains(input, "负载") || strings.Contains(input, "cpu") || strings.Contains(input, "load") {
+		return "top -b -n 1 | head -15"
+	}
+	// Docker 概览
+	if input == "docker" || input == "看看docker" || input == "docker容器" {
+		return "docker ps -a"
+	}
+	// Docker 镜像
+	if strings.Contains(input, "镜像") || strings.Contains(input, "image") {
+		return "docker images"
+	}
+	// 网络端口
+	if strings.Contains(input, "端口") || strings.Contains(input, "port") {
+		return "netstat -tulpn"
+	}
+	// 进程
+	if strings.Contains(input, "进程") && !strings.Contains(input, "杀") {
+		return "ps aux --sort=-%cpu | head -10"
+	}
+	
+	return ""
+}
+
+// 静态规则拦截器
 func CheckStaticResponse(input string) string {
 	input = strings.ToLower(strings.TrimSpace(input))
-	
-	// 1. 身份/版本类
-	if input == "你好" || input == "你是谁" || input == "版本" || input == "version" || input == "whoami" || strings.Contains(input, "介绍") {
-		return fmt.Sprintf(`**qwq-aiops %s**
---------------------------------
-我是您的私有化智能运维专家。
-
-**核心能力：**
-1. 🛠️ **自动巡检**：监控系统负载、Docker、K8s 状态。
-2. ⚡ **命令执行**：直接执行 "看看内存"、"查负载"。
-3. 📝 **配置生成**：生成 YAML、Python 脚本。
-4. 🔒 **安全风控**：高危命令自动拦截。
-
-*请直接下达运维指令，例如：“看看内存” 或 “生成 nginx yaml”。*`, Version)
+	if input == "你好" || input == "你是谁" || input == "版本" || input == "version" || input == "whoami" {
+		return fmt.Sprintf("qwq-aiops %s (Linux Operations Agent)", Version)
 	}
-
-	// 2. 帮助类
-	if input == "help" || input == "帮助" || input == "能做什么" {
-		return `**可用指令示例：**
-- 🔍 **查询**：看看内存、查负载、看Docker容器、看K8s Pod
-- ⚙️ **操作**：重启 nginx (需确认)、清理磁盘
-- 📄 **生成**：写一个 busybox yaml、生成 go语言代码
-- 📊 **报表**：生成系统状态日报`
+	if input == "help" || input == "帮助" {
+		return "支持指令：看看内存、查负载、看Docker、生成nginx配置..."
 	}
-
 	return ""
 }
 
@@ -92,16 +108,18 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 当前环境：**Linux Server**。
 用户身份：**Root 管理员**。
 
-【最高指令】
-1. **查询即执行**：用户问 "内存"、"负载"、"Docker"，**必须**调用 execute_shell_command。
-2. **文件生成**：
-   - 用户问 "写个yaml"、"生成配置"，**只输出文件内容**。
-   - **必须**使用 Markdown 代码块包裹 (e.g., `+"```yaml ... ```"+`)。
-   - **严禁**输出任何解释文字（如 "好的"、"这是文件"）。
-   - **严禁**输出 echo 命令。
-3. **代码内容**：
-   - 只有用户明确和代码相关的内容才可以生成代码！
-   - 如果用户只说写代码但是没有说是什么语言，你要再去询问！
+【决策逻辑】
+1. **查询系统状态**（如：看日志、查Nginx状态）：
+   - **必须**调用 execute_shell_command。
+   - **严禁**生成 Python/Shell 脚本来查询，直接用系统命令。
+
+2. **生成文件/代码**（如：写个脚本、生成配置）：
+   - 只有当用户明确说 "写一个..."、"生成..."、"代码" 时。
+   - 输出 Markdown 代码块。
+   - **严禁**输出 echo 命令，只输出文件内容。
+
+3. **禁止废话**：
+   - 不要解释命令，不要说 "你可以使用..."。
 
 %s`, knowledgePart)
 
@@ -109,20 +127,20 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
 		// 样本 1: 运维查询
-		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
+		{Role: openai.ChatMessageRoleUser, Content: "分析一下 nginx 为什么挂了"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
 			ToolCalls: []openai.ToolCall{{
 				ID: "call_1", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "systemctl status nginx || docker logs nginx", "reason": "check nginx status"}`},
 			}},
 		},
 
-		// 样本 2: 文件生成
-		{Role: openai.ChatMessageRoleUser, Content: "写一个 hello.py"},
+		// 样本 2: 代码生成
+		{Role: openai.ChatMessageRoleUser, Content: "写一个清理日志的脚本"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
-			Content: "```python\nprint('Hello World')\n```",
+			Content: "```bash\n#!/bin/bash\nfind /var/log -name \"*.log\" -mtime +7 -delete\n```",
 		},
 	}
 }
@@ -198,7 +216,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		}
 	}
 
-	// 3. 文本回退机制 (自动捕获命令)
+	// 3. 文本回退机制
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {

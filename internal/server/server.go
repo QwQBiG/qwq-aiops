@@ -151,7 +151,8 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 		_, msg, err := conn.ReadMessage()
 		if err != nil { break }
 		input := string(msg)
-
+		
+		// 1. 优先检查静态规则 (拦截闲聊)
 		staticResp := agent.CheckStaticResponse(input)
 		if staticResp != "" {
 			conn.WriteJSON(map[string]string{"type": "answer", "content": staticResp})
@@ -159,6 +160,20 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// 2. 检查关键词速查 (拦截高频运维命令)
+		quickCmd := agent.GetQuickCommand(input)
+		if quickCmd != "" {
+			conn.WriteJSON(map[string]string{"type": "status", "content": "⚡ 快速执行: " + quickCmd})
+			output := utils.ExecuteShell(quickCmd)
+			if strings.TrimSpace(output) == "" { output = "(No output)" }
+			// 包装成 Markdown
+			finalOutput := fmt.Sprintf("```\n%s\n```", output)
+			conn.WriteJSON(map[string]string{"type": "answer", "content": finalOutput})
+			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
+			continue
+		}
+
+		// 3. 只有复杂问题才交给 AI
 		enhancedInput := input + " (Context: Current Linux Server)"
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 
