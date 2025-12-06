@@ -46,6 +46,7 @@ type StatsPoint struct {
 	MemTotal  string      `json:"mem_total"`
 	DiskPct   string      `json:"disk_pct"`
 	DiskAvail string      `json:"disk_avail"`
+	TcpConn   string      `json:"tcp_conn"`
 	Services  interface{} `json:"services"`
 }
 
@@ -57,16 +58,13 @@ func Start(port string) {
 	}
 
 	go collectStatsLoop()
+
 	distFS, err := fs.Sub(frontendDist, "dist")
 	if err != nil {
 		logger.Info("⚠️ 前端资源加载异常: %v", err)
 	} else {
 		fileServer := http.FileServer(http.FS(distFS))
-		
-		// 静态资源
 		http.Handle("/assets/", fileServer)
-		
-		// 首页鉴权
 		http.HandleFunc("/", basicAuth(func(w http.ResponseWriter, r *http.Request) {
 			if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws/") {
 				return 
@@ -122,6 +120,10 @@ func collectOnePoint() StatsPoint {
 		diskAvail = diskParts[1]
 	}
 
+	tcpRaw := utils.ExecuteShell("ss -s | grep 'TCP:' | grep -oE 'estab [0-9]+' | awk '{print $2}'")
+	tcpConn := strings.TrimSpace(tcpRaw)
+	if tcpConn == "" { tcpConn = "0" }
+
 	httpStatus := monitor.RunChecks()
 
 	return StatsPoint{
@@ -132,6 +134,7 @@ func collectOnePoint() StatsPoint {
 		MemTotal:  fmt.Sprintf("%.0f", memTotal),
 		DiskPct:   diskPct,
 		DiskAvail: diskAvail,
+		TcpConn:   tcpConn,
 		Services:  httpStatus,
 	}
 }
@@ -169,7 +172,6 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 		if err != nil { break }
 		input := string(msg)
 		
-		// 1. 静态规则拦截
 		staticResp := agent.CheckStaticResponse(input)
 		if staticResp != "" {
 			conn.WriteJSON(map[string]string{"type": "answer", "content": staticResp})
@@ -177,7 +179,6 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// 2. 关键词速查
 		quickCmd := agent.GetQuickCommand(input)
 		if quickCmd != "" {
 			conn.WriteJSON(map[string]string{"type": "status", "content": "⚡ 快速执行: " + quickCmd})
@@ -189,29 +190,21 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// 3. AI 处理
 		enhancedInput := input + " (Context: Current Linux Server)"
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 
 		for i := 0; i < 5; i++ {
 			conn.WriteJSON(map[string]string{"type": "status", "content": "🤖 思考中..."})
-			
 			respMsg, cont := agent.ProcessAgentStepForWeb(&messages, func(log string) {
 				conn.WriteJSON(map[string]string{"type": "log", "content": log})
 			})
-			
 			if respMsg.Content != "" {
 				conn.WriteJSON(map[string]string{"type": "answer", "content": respMsg.Content})
 			}
-			
 			if !cont { break }
 		}
 		conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
 	}
-}
-
-func handleIndex(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("qwq Backend Running. Please build frontend."))
 }
 
 func handleLogs(w http.ResponseWriter, r *http.Request) {

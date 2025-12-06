@@ -30,7 +30,6 @@
         </el-menu>
       </el-aside>
 
-      <!-- 主内容区 -->
       <el-container>
         <el-header class="header">
           <div class="breadcrumb">{{ pageTitle }}</div>
@@ -39,7 +38,9 @@
           </el-button>
         </el-header>
         <el-main class="main-content">
-          <component :is="currentComponent" />
+          <KeepAlive>
+            <component :is="currentComponent" />
+          </KeepAlive>
         </el-main>
       </el-container>
     </el-container>
@@ -47,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import Dashboard from './components/Dashboard.vue'
 import Terminal from './components/Terminal.vue'
 import Logs from './components/Logs.vue'
@@ -96,6 +97,6 @@ body { margin: 0; background-color: #0f172a; color: #e2e8f0; font-family: 'Inter
 .logo { height: 60px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; color: #fff; border-bottom: 1px solid #334155; gap: 10px; }
 .logo-icon { color: #409EFF; }
 .el-menu { border-right: none !important; }
-.header { background-color: #1e293b; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; color: #fff; }
-.main-content { background-color: #0f172a; padding: 20px; }
+.header { background-color: #1e293b; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; color: #fff; padding: 0 20px; }
+.main-content { background-color: #0f172a; padding: 20px; overflow: hidden; }
 </style>

@@ -49,7 +49,7 @@ const stats = ref([
   { title: 'CPU 负载', percentage: 0, value: '0', unit: 'Load', detail: '1min / 5min / 15min', color: '#409EFF' },
   { title: '内存使用', percentage: 0, value: '0', unit: 'GB', detail: 'Total: 0 GB', color: '#67C23A' },
   { title: '系统磁盘', percentage: 0, value: '0', unit: '%', detail: 'Free: 0 GB', color: '#E6A23C' },
-  { title: 'TCP 连接', percentage: 100, value: '0', unit: '个', detail: 'Established', color: '#F56C6C' },
+  { title: 'TCP 连接', percentage: 0, value: '0', unit: '个', detail: 'Established', color: '#F56C6C' },
 ])
 
 const services = ref([])
@@ -58,30 +58,31 @@ let timer = null
 const fetchData = async () => {
   try {
     const res = await axios.get('/api/stats')
-    // 假设后端返回的是历史数组，取最后一个
     const data = Array.isArray(res.data) ? res.data[res.data.length - 1] : res.data
     if (!data) return
 
-    // 更新 CPU
+    // CPU
     const load = parseFloat(data.load.split(',')[0])
     stats.value[0].value = load
-    stats.value[0].percentage = Math.min(load * 10, 100) // 简单估算
+    stats.value[0].percentage = Math.min(load * 10, 100)
     stats.value[0].detail = data.load
 
-    // 更新内存
+    // 内存
     stats.value[1].value = (parseFloat(data.mem_used) / 1024).toFixed(1)
     stats.value[1].percentage = parseFloat(data.mem_pct)
     stats.value[1].detail = `Total: ${(parseFloat(data.mem_total) / 1024).toFixed(1)} GB`
 
-    // 更新磁盘
-    stats.value[2].value = data.disk_pct
+    // 磁盘
+    stats.value[2].value = data.disk_pct.replace('%', '')
     stats.value[2].percentage = parseFloat(data.disk_pct)
     stats.value[2].detail = `Free: ${data.disk_avail}`
 
-    // 更新 TCP (假设后端没传，暂时模拟或从 loadInfo 解析)
-    // 这里需要后端配合传 tcp 字段，暂时用 100 占位
+    // TCP 连接数
+    const tcpCount = parseInt(data.tcp_conn || 0)
+    stats.value[3].value = tcpCount
+    stats.value[3].percentage = Math.min((tcpCount / 10000) * 100, 100)
 
-    // 更新服务列表
+    // 服务列表
     if (data.services) {
       services.value = data.services
     }
@@ -110,7 +111,15 @@ const tableRowClassName = ({ row }) => {
 .percentage-label { display: block; font-size: 12px; color: #909399; }
 .stat-footer { margin-top: 15px; font-size: 12px; color: #909399; }
 .monitor-card { margin-top: 20px; background: #1e293b; border: 1px solid #334155; color: #fff; }
-:deep(.el-card__header) { border-bottom: 1px solid #334155; }
-:deep(.el-table) { background-color: transparent; --el-table-tr-bg-color: transparent; --el-table-header-bg-color: #0f172a; --el-table-text-color: #fff; --el-table-border-color: #334155; }
+
+:deep(.el-table) { 
+  background-color: transparent; 
+  --el-table-tr-bg-color: transparent; 
+  --el-table-header-bg-color: #0f172a; 
+  --el-table-text-color: #fff; 
+  --el-table-border-color: #334155; 
+  --el-table-row-hover-bg-color: #334155 !important;
+}
 :deep(.el-table__inner-wrapper::before) { background-color: #334155; }
+:deep(.el-card__header) { border-bottom: 1px solid #334155; }
 </style>
