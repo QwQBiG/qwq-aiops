@@ -296,20 +296,26 @@ func performPatrol() {
 			continue
 		}
 
-		// 过滤掉 loop、snap、tmpfs、overlay 等
-		if isIgnoredDisk(line) {
+		// 解析字段
+		fields := strings.Fields(line)
+		if len(fields) < 5 {
+			continue
+		}
+		
+		device := fields[0]
+		mountPoint := fields[len(fields)-1]
+		
+		// 严格过滤：检查设备名和挂载点
+		if isIgnoredDisk(line, device, mountPoint) {
 			continue
 		}
 
 		// 解析使用率
-		fields := strings.Fields(line)
-		if len(fields) >= 5 {
-			useStr := strings.TrimSuffix(fields[4], "%")
-			usePct, err := strconv.Atoi(useStr)
-			if err == nil && usePct > 85 {
-				// 只有非 loop 设备且使用率 > 85% 才报警
-				anomalies = append(anomalies, fmt.Sprintf("**磁盘告警 (%s)**:\n```\n%s\n```", fields[0], line))
-			}
+		useStr := strings.TrimSuffix(fields[4], "%")
+		usePct, err := strconv.Atoi(useStr)
+		if err == nil && usePct > 85 {
+			// 只有非 loop 设备且使用率 > 85% 才报警
+			anomalies = append(anomalies, fmt.Sprintf("**磁盘告警 (%s)**:\n```\n%s\n```", fields[0], line))
 		}
 	}
 
@@ -376,17 +382,22 @@ func performPatrol() {
 	}
 }
 
-func isIgnoredDisk(line string) bool {
-	if strings.Contains(line, "/dev/loop") {
+func isIgnoredDisk(line, device, mountPoint string) bool {
+	// 检查设备名：过滤所有 loop 设备
+	if strings.Contains(device, "/dev/loop") || strings.Contains(device, "loop") {
 		return true
 	}
-	if strings.Contains(line, "/snap") || strings.Contains(line, "snap/") {
+	// 检查挂载点：过滤所有 snap 相关路径（包括 /snap 和 /hostfs/snap）
+	if strings.Contains(mountPoint, "/snap") || 
+	   strings.Contains(mountPoint, "snap/") ||
+	   strings.Contains(mountPoint, "/hostfs") {
 		return true
 	}
+	// 检查整行：过滤虚拟文件系统
 	if strings.Contains(line, "tmpfs") || 
 	   strings.Contains(line, "overlay") || 
 	   strings.Contains(line, "cdrom") ||
-	   strings.Contains(line, "/hostfs") {
+	   strings.Contains(line, "efivarfs") {
 		return true
 	}
 	return false

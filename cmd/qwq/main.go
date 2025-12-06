@@ -14,6 +14,7 @@ import (
 	"qwq/internal/server"
 	"qwq/internal/utils"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -172,8 +173,49 @@ func performPatrol() {
 	logger.Info("正在执行系统巡检...")
 	var anomalies []string
 
-	if out := utils.ExecuteShell("df -h | grep -vE '^Filesystem|tmpfs|cdrom|efivarfs|overlay' | awk 'int($5) > 85 {print $0}'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
-		anomalies = append(anomalies, "**磁盘告警**:\n```\n"+strings.TrimSpace(out)+"\n```")
+	// 磁盘检查：在代码中解析和过滤，确保可靠过滤 loop、snap 等设备
+	diskOut := utils.ExecuteShell("df -h")
+	diskLines := strings.Split(diskOut, "\n")
+	var diskAlerts []string
+	
+	for _, line := range diskLines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "Filesystem") {
+			continue
+		}
+		
+		// 严格过滤：检查设备名和挂载点
+		fields := strings.Fields(line)
+		if len(fields) < 5 {
+			continue
+		}
+		
+		device := fields[0]
+		mountPoint := fields[len(fields)-1]
+		
+		// 过滤所有 loop 设备、snap 相关、虚拟文件系统
+		if strings.Contains(device, "/dev/loop") ||
+		   strings.Contains(device, "loop") ||
+		   strings.Contains(mountPoint, "/snap") ||
+		   strings.Contains(mountPoint, "snap/") ||
+		   strings.Contains(mountPoint, "/hostfs") ||
+		   strings.Contains(line, "tmpfs") ||
+		   strings.Contains(line, "overlay") ||
+		   strings.Contains(line, "cdrom") ||
+		   strings.Contains(line, "efivarfs") {
+			continue
+		}
+		
+		// 解析使用率
+		useStr := strings.TrimSuffix(fields[4], "%")
+		usePct, err := strconv.Atoi(useStr)
+		if err == nil && usePct > 85 {
+			diskAlerts = append(diskAlerts, line)
+		}
+	}
+	
+	if len(diskAlerts) > 0 {
+		anomalies = append(anomalies, "**磁盘告警**:\n```\n"+strings.Join(diskAlerts, "\n")+"\n```")
 	}
 	if out := utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }' | awk '{ if ($1 > 4.0) print $0 }'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
 		anomalies = append(anomalies, "**高负载**:\n```\n"+strings.TrimSpace(out)+"\n```")
