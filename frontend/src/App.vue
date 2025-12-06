@@ -2,40 +2,49 @@
   <div class="common-layout">
     <el-container class="layout-container">
       <!-- 侧边栏 -->
-      <el-aside width="220px" class="sidebar">
+      <el-aside width="200px" class="sidebar">
         <div class="logo">
-          <el-icon class="logo-icon"><Monitor /></el-icon>
+          <div class="logo-box">Q</div>
           <span>qwq AIOps</span>
         </div>
         <el-menu
           active-text-color="#409EFF"
-          background-color="#1e293b"
-          text-color="#fff"
+          background-color="#10141d"
+          text-color="#a1a7b7"
           :default-active="activeMenu"
           class="el-menu-vertical"
           @select="handleSelect"
         >
           <el-menu-item index="dashboard">
             <el-icon><Odometer /></el-icon>
-            <span>系统概览</span>
+            <span>概览</span>
+          </el-menu-item>
+          <el-menu-item index="containers">
+            <el-icon><Box /></el-icon>
+            <span>容器</span>
           </el-menu-item>
           <el-menu-item index="terminal">
             <el-icon><ChatLineSquare /></el-icon>
-            <span>AI 智能终端</span>
+            <span>AI 终端</span>
           </el-menu-item>
           <el-menu-item index="logs">
             <el-icon><Document /></el-icon>
-            <span>运行日志</span>
+            <span>日志</span>
           </el-menu-item>
         </el-menu>
       </el-aside>
 
+      <!-- 主内容区 -->
       <el-container>
         <el-header class="header">
-          <div class="breadcrumb">{{ pageTitle }}</div>
-          <el-button type="primary" size="small" @click="triggerPatrol" :loading="patrolLoading">
-            ⚡ 立即巡检
-          </el-button>
+          <div class="breadcrumb">
+            <span class="current-page">{{ pageTitle }}</span>
+          </div>
+          <div class="header-actions">
+            <el-button type="primary" plain size="small" @click="triggerPatrol" :loading="patrolLoading">
+              <el-icon class="el-icon--left"><Lightning /></el-icon>立即巡检
+            </el-button>
+          </div>
         </el-header>
         <el-main class="main-content">
           <KeepAlive>
@@ -52,6 +61,7 @@ import { ref, computed } from 'vue'
 import Dashboard from './components/Dashboard.vue'
 import Terminal from './components/Terminal.vue'
 import Logs from './components/Logs.vue'
+import Containers from './components/Containers.vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
@@ -61,13 +71,15 @@ const patrolLoading = ref(false)
 const components = {
   dashboard: Dashboard,
   terminal: Terminal,
-  logs: Logs
+  logs: Logs,
+  containers: Containers
 }
 
 const titles = {
-  dashboard: '系统概览 / Dashboard',
-  terminal: '智能运维 / AI Terminal',
-  logs: '系统日志 / System Logs'
+  dashboard: '系统概览',
+  terminal: '智能运维终端',
+  logs: '系统运行日志',
+  containers: '容器管理'
 }
 
 const currentComponent = computed(() => components[activeMenu.value])
@@ -91,12 +103,19 @@ const triggerPatrol = async () => {
 </script>
 
 <style>
-body { margin: 0; background-color: #0f172a; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+body { margin: 0; background-color: #f5f7fa; color: #1f2329; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+@media (prefers-color-scheme: dark) {
+  body { background-color: #0b0e14; color: #e2e8f0; }
+}
+
 .layout-container { height: 100vh; }
-.sidebar { background-color: #1e293b; border-right: 1px solid #334155; }
-.logo { height: 60px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; color: #fff; border-bottom: 1px solid #334155; gap: 10px; }
-.logo-icon { color: #409EFF; }
+.sidebar { background-color: #10141d; border-right: 1px solid #2c3038; }
+.logo { height: 60px; display: flex; align-items: center; padding-left: 20px; font-size: 18px; font-weight: 600; color: #fff; border-bottom: 1px solid #2c3038; gap: 10px; }
+.logo-box { width: 32px; height: 32px; background: #409EFF; border-radius: 6px; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; }
 .el-menu { border-right: none !important; }
-.header { background-color: #1e293b; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; color: #fff; padding: 0 20px; }
-.main-content { background-color: #0f172a; padding: 20px; overflow: hidden; }
+.el-menu-item.is-active { background-color: #1d2129 !important; border-right: 3px solid #409EFF; }
+
+.header { background-color: #10141d; border-bottom: 1px solid #2c3038; display: flex; align-items: center; justify-content: space-between; color: #fff; padding: 0 20px; height: 60px; }
+.current-page { font-size: 16px; font-weight: 500; }
+.main-content { background-color: #0b0e14; padding: 20px; overflow-y: auto; }
 </style>
