@@ -356,7 +356,6 @@ func performPatrol() {
 	// --- 额外过滤 loop 设备 ---
 	var cleanedAnomalies []string
 	for _, anomaly := range anomalies {
-		// 确保排除掉 loop、snap、overlay 相关的磁盘信息
 		if !strings.Contains(anomaly, "/dev/loop") && 
 		   !strings.Contains(anomaly, "/snap") && 
 		   !strings.Contains(anomaly, "overlay") {
@@ -368,6 +367,9 @@ func performPatrol() {
 		report := strings.Join(cleanedAnomalies, "\n")
 		logger.Info("🚨 发现异常，正在请求 AI 分析...")
 		analysis := agent.AnalyzeWithAI(report)
+
+		analysis = cleanAIAnalysis(analysis)
+
 		alertMsg := fmt.Sprintf("🚨 **系统告警** [%s]\n\n%s\n\n💡 **处理建议**:\n%s", utils.GetHostname(), report, analysis)
 		notify.Send("系统告警", alertMsg)
 		logger.Info("告警已推送")
@@ -376,3 +378,9 @@ func performPatrol() {
 	}
 }
 
+func cleanAIAnalysis(analysis string) string {
+	analysis = strings.Replace(analysis, "/dev/loop", "[排除] /dev/loop", -1)
+	analysis = strings.Replace(analysis, "/snap", "[排除] /snap", -1)
+	analysis = strings.Replace(analysis, "overlay", "[排除] overlay", -1)
+	return analysis
+}
