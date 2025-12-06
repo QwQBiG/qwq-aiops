@@ -57,21 +57,23 @@ func Start(port string) {
 	}
 
 	go collectStatsLoop()
-
 	distFS, err := fs.Sub(frontendDist, "dist")
 	if err != nil {
-		logger.Info("前端资源加载失败: %v", err)
+		logger.Info("⚠️ 前端资源加载异常: %v", err)
+	} else {
+		fileServer := http.FileServer(http.FS(distFS))
+		
+		// 静态资源
+		http.Handle("/assets/", fileServer)
+		
+		// 首页鉴权
+		http.HandleFunc("/", basicAuth(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws/") {
+				return 
+			}
+			fileServer.ServeHTTP(w, r)
+		}))
 	}
-	fileServer := http.FileServer(http.FS(distFS))
-
-	http.Handle("/assets/", fileServer)
-
-	http.HandleFunc("/", basicAuth(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws/") {
-			return 
-		}
-		fileServer.ServeHTTP(w, r)
-	}))
 
 	http.HandleFunc("/api/logs", basicAuth(handleLogs))
 	http.HandleFunc("/api/stats", basicAuth(handleStats))
@@ -91,11 +93,14 @@ func Start(port string) {
 func collectStatsLoop() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+
 	for range ticker.C {
 		point := collectOnePoint()
 		statsCache.Lock()
 		statsCache.History = append(statsCache.History, point)
-		if len(statsCache.History) > 60 { statsCache.History = statsCache.History[1:] }
+		if len(statsCache.History) > 60 {
+			statsCache.History = statsCache.History[1:]
+		}
 		statsCache.Unlock()
 	}
 }
@@ -107,6 +112,7 @@ func collectOnePoint() StatsPoint {
 	fmt.Sscanf(memRaw, "%f %f", &memTotal, &memUsed)
 	memPct := 0.0
 	if memTotal > 0 { memPct = (memUsed / memTotal) * 100 }
+	
 	diskRaw := utils.ExecuteShell("df -h / | awk 'NR==2 {print $5,$4}'")
 	diskParts := strings.Fields(diskRaw)
 	diskPct := "0"
@@ -115,7 +121,9 @@ func collectOnePoint() StatsPoint {
 		diskPct = strings.TrimSuffix(diskParts[0], "%")
 		diskAvail = diskParts[1]
 	}
+
 	httpStatus := monitor.RunChecks()
+
 	return StatsPoint{
 		Time:      time.Now().Format("15:04:05"),
 		Load:      load,
@@ -153,25 +161,57 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.Close()
+
 	messages := agent.GetBaseMessages()
+
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil { break }
 		input := string(msg)
+		
+		// 1. 静态规则拦截
+		staticResp := agent.CheckStaticResponse(input)
+		if staticResp != "" {
+			conn.WriteJSON(map[string]string{"type": "answer", "content": staticResp})
+			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
+			continue
+		}
+
+		// 2. 关键词速查
+		quickCmd := agent.GetQuickCommand(input)
+		if quickCmd != "" {
+			conn.WriteJSON(map[string]string{"type": "status", "content": "⚡ 快速执行: " + quickCmd})
+			output := utils.ExecuteShell(quickCmd)
+			if strings.TrimSpace(output) == "" { output = "(No output)" }
+			finalOutput := fmt.Sprintf("```\n%s\n```", output)
+			conn.WriteJSON(map[string]string{"type": "answer", "content": finalOutput})
+			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
+			continue
+		}
+
+		// 3. AI 处理
 		enhancedInput := input + " (Context: Current Linux Server)"
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
+
 		for i := 0; i < 5; i++ {
 			conn.WriteJSON(map[string]string{"type": "status", "content": "🤖 思考中..."})
+			
 			respMsg, cont := agent.ProcessAgentStepForWeb(&messages, func(log string) {
 				conn.WriteJSON(map[string]string{"type": "log", "content": log})
 			})
+			
 			if respMsg.Content != "" {
 				conn.WriteJSON(map[string]string{"type": "answer", "content": respMsg.Content})
 			}
+			
 			if !cont { break }
 		}
 		conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
 	}
+}
+
+func handleIndex(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("qwq Backend Running. Please build frontend."))
 }
 
 func handleLogs(w http.ResponseWriter, r *http.Request) {
