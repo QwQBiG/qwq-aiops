@@ -18,7 +18,7 @@ import (
 const (
 	DefaultModel   = "Qwen/Qwen2.5-7B-Instruct"
 	DefaultBaseURL = "https://api.siliconflow.cn/v1"
-	Version        = "v3.2.0 Enterprise"
+	Version        = "v3.3.0 Enterprise"
 )
 
 var Client *openai.Client
@@ -55,11 +55,11 @@ func GetQuickCommand(input string) string {
 	input = strings.ToLower(strings.TrimSpace(input))
 	
 	// --- 1. Kubernetes 专区 ---
-	// 节点状态
+	// 节点状态 (详细信息)
 	if strings.Contains(input, "node") || strings.Contains(input, "节点") {
 		return "kubectl get nodes -o wide"
 	}
-	// Pod 状态
+	// Pod 状态 (所有命名空间 + IP信息)
 	if strings.Contains(input, "pod") || strings.Contains(input, "容器组") {
 		return "kubectl get pods -A -o wide --sort-by=.metadata.creationTimestamp"
 	}
@@ -71,7 +71,7 @@ func GetQuickCommand(input string) string {
 	if strings.Contains(input, "deploy") || strings.Contains(input, "部署") {
 		return "kubectl get deploy -A"
 	}
-	// Events 事件
+	// Events 事件 (排查 K8s 报错，按时间倒序)
 	if strings.Contains(input, "event") || strings.Contains(input, "事件") || strings.Contains(input, "k8s报错") {
 		return "kubectl get events -A --sort-by='.lastTimestamp' | tail -n 20"
 	}
@@ -79,13 +79,13 @@ func GetQuickCommand(input string) string {
 	if input == "k8s" || strings.Contains(input, "集群信息") || strings.Contains(input, "cluster") {
 		return "kubectl cluster-info"
 	}
-	// 资源使用情况
+	// 资源使用情况 (Top)
 	if strings.Contains(input, "k8s资源") || strings.Contains(input, "pod内存") || strings.Contains(input, "pod cpu") {
 		return "kubectl top pods -A --sort-by=cpu | head -n 15"
 	}
 
 	// --- 2. Docker 专区 ---
-	// 容器列表 (含退出的)
+	// 容器列表 (包含退出的)
 	if input == "docker" || input == "看看docker" || input == "docker容器" {
 		return "docker ps -a"
 	}
@@ -93,7 +93,7 @@ func GetQuickCommand(input string) string {
 	if strings.Contains(input, "镜像") || strings.Contains(input, "image") {
 		return "docker images"
 	}
-	// 容器资源统计
+	// 容器资源统计 (实时)
 	if strings.Contains(input, "docker资源") || strings.Contains(input, "容器内存") {
 		return "docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}'"
 	}
@@ -105,13 +105,13 @@ func GetQuickCommand(input string) string {
 	}
 	// 磁盘
 	if strings.Contains(input, "磁盘") || strings.Contains(input, "硬盘") || strings.Contains(input, "disk") {
-		return "df -hT | grep -v tmpfs"
+		return "df -hT | grep -v tmpfs" // 排除 tmpfs 干扰
 	}
 	// 负载/CPU
 	if strings.Contains(input, "负载") || strings.Contains(input, "cpu") || strings.Contains(input, "load") {
-		return "top -b -n 1 | head -n 15"
+		return "top -b -n 1 | head -n 15" // 只看前15行
 	}
-	// 进程
+	// 进程 (按 CPU 排序)
 	if strings.Contains(input, "进程") && !strings.Contains(input, "杀") {
 		return "ps aux --sort=-%cpu | head -n 15"
 	}
@@ -141,6 +141,8 @@ func GetQuickCommand(input string) string {
 	if strings.Contains(input, "用户") || strings.Contains(input, "who") {
 		return "w"
 	}
+	
+	return ""
 }
 
 func CheckStaticResponse(input string) string {
@@ -184,11 +186,11 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 用户身份：**Root 管理员**。
 
 【决策逻辑】
-1. **查询系统状态**（如：看日志、查Nginx状态）：
+1. **查询系统状态**：
    - **必须**调用 execute_shell_command。
    - **严禁**生成 Python/Shell 脚本来查询，直接用系统命令。
 
-2. **生成文件/代码**（如：写个脚本、生成配置）：
+2. **生成文件/代码**：
    - 只有当用户明确说 "写一个..."、"生成..."、"代码" 时。
    - 输出 Markdown 代码块。
    - **严禁**输出 echo 命令，只输出文件内容。
