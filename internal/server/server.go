@@ -5,17 +5,19 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
-	"strings"
-	"strconv"
-	"sync"
 	"qwq/internal/agent"
 	"qwq/internal/config"
 	"qwq/internal/logger"
 	"qwq/internal/monitor"
 	"qwq/internal/utils"
 	"qwq/internal/notify"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	openai "github.com/sashabaranov/go-openai"
@@ -58,91 +60,53 @@ type DockerContainer struct {
 	State   string `json:"state"`
 }
 
-// --- 巡检逻辑 ---
-func performPatrol() {
-	logger.Info("正在执行系统巡检...")
-	var anomalies []string
-
-	// 1. 磁盘检查：不再依赖 grep，改用 Go 代码逐行过滤
-	diskOut := utils.ExecuteShell("df -h")
-	diskLines := strings.Split(diskOut, "\n")
-	
-	for _, line := range diskLines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "Filesystem") {
-			continue
-		}
-
-		// 过滤
-		if strings.Contains(line, "/dev/loop") || 
-		   strings.Contains(line, "/snap") || 
-		   strings.Contains(line, "tmpfs") || 
-		   strings.Contains(line, "overlay") || 
-		   strings.Contains(line, "cdrom") {
-			continue
-		}
-
-		// 解析使用率 (df -h 输出的第5列通常是 Use%)
-		fields := strings.Fields(line)
-		if len(fields) >= 5 {
-			useStr := strings.TrimSuffix(fields[4], "%")
-			usePct, err := strconv.Atoi(useStr)
-			if err == nil && usePct > 85 {
-				// 只有非 loop 设备且使用率 > 85% 才报警
-				anomalies = append(anomalies, fmt.Sprintf("**磁盘告警 (%s)**:\n```\n%s\n```", fields[0], line))
-			}
-		}
+func Start(port string) {
+	var err error
+	logFile, err = os.OpenFile("qwq.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("无法创建日志文件: %v\n", err)
 	}
 
-	// 2. 负载
-	if out := utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }' | awk '{ if ($1 > 4.0) print $0 }'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
-		anomalies = append(anomalies, "**高负载**:\n```\n"+strings.TrimSpace(out)+"\n```")
-	}
-	
-	// 3. OOM
-	dmesgOut := utils.ExecuteShell("dmesg | grep -i 'out of memory' | tail -n 5")
-	if !strings.Contains(dmesgOut, "Operation not permitted") && !strings.Contains(dmesgOut, "不允许的操作") && strings.TrimSpace(dmesgOut) != "" && !strings.Contains(dmesgOut, "exit status") {
-		anomalies = append(anomalies, "**OOM日志**:\n```\n"+strings.TrimSpace(dmesgOut)+"\n```")
-	}
-	
-	// 4. 僵尸进程
-	rawZombies := utils.ExecuteShell("ps -A -o stat,ppid,pid,cmd | awk '$1 ~ /^[Zz]/'")
-	if strings.TrimSpace(rawZombies) != "" && !strings.Contains(rawZombies, "exit status") {
-		detailZombie := "STAT    PPID     PID CMD\n" + rawZombies
-		anomalies = append(anomalies, "**僵尸进程**:\n```\n"+strings.TrimSpace(detailZombie)+"\n```")
-	}
+	go collectStatsLoop()
 
-	// 5. 自定义规则
-	for _, rule := range config.GlobalConfig.PatrolRules {
-		out := utils.ExecuteShell(rule.Command)
-		if strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
-			logger.Info(fmt.Sprintf("⚠️ 触发自定义规则: %s", rule.Name))
-			anomalies = append(anomalies, fmt.Sprintf("**%s**:\n```\n%s\n```", rule.Name, strings.TrimSpace(out)))
-		}
-	}
-
-	// 6. HTTP 监控
-	httpResults := monitor.RunChecks()
-	for _, res := range httpResults {
-		if !res.Success {
-			logger.Info(fmt.Sprintf("⚠️ HTTP 监控失败: %s", res.Name))
-			anomalies = append(anomalies, fmt.Sprintf("**HTTP异常 (%s)**:\n%s", res.Name, res.Error))
-		}
-	}
-
-	if len(anomalies) > 0 {
-		report := strings.Join(anomalies, "\n")
-		logger.Info("🚨 发现异常，正在请求 AI 分析...")
-		analysis := agent.AnalyzeWithAI(report)
-		alertMsg := fmt.Sprintf("🚨 **系统告警** [%s]\n\n%s\n\n💡 **处理建议**:\n%s", utils.GetHostname(), report, analysis)
-		notify.Send("系统告警", alertMsg)
-		logger.Info("告警已推送")
+	distFS, err := fs.Sub(frontendDist, "dist")
+	if err != nil {
+		logger.Info("⚠️ 前端资源加载异常: %v", err)
 	} else {
-		logger.Info("✔ 系统健康")
+		fileServer := http.FileServer(http.FS(distFS))
+		http.Handle("/assets/", fileServer)
+		http.HandleFunc("/", basicAuth(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws/") {
+				return 
+			}
+			fileServer.ServeHTTP(w, r)
+		}))
+	}
+
+	http.HandleFunc("/api/logs", basicAuth(handleLogs))
+	http.HandleFunc("/api/stats", basicAuth(handleStats))
+	http.HandleFunc("/api/trigger", basicAuth(handleTrigger))
+	http.HandleFunc("/api/containers", basicAuth(handleContainers))
+	http.HandleFunc("/api/container/action", basicAuth(handleContainerAction))
+
+	http.HandleFunc("/api/files/list", basicAuth(handleFileList))
+	http.HandleFunc("/api/files/content", basicAuth(handleFileContent))
+	http.HandleFunc("/api/files/save", basicAuth(handleFileSave))
+	http.HandleFunc("/api/files/action", basicAuth(handleFileAction))
+
+	http.HandleFunc("/ws/chat", basicAuth(handleWSChat))
+
+	logger.Info("🚀 qwq Dashboard started at http://localhost" + port)
+	if config.GlobalConfig.WebUser != "" {
+		logger.Info("🔒 安全模式已开启 (Basic Auth)")
+	}
+
+	if err := http.ListenAndServe(port, nil); err != nil {
+		fmt.Printf("Web Server Error: %v\n", err)
 	}
 }
 
-// --- 其他 Handlers ---
+// --- 容器管理 ---
 
 func handleContainers(w http.ResponseWriter, r *http.Request) {
 	cmd := `docker ps -a --format "{{.ID}}|{{.Image}}|{{.Status}}|{{.Names}}"`
@@ -181,25 +145,75 @@ func handleContainerAction(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("success"))
 }
 
-func handleLogs(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(logger.GetWebLogs())
-}
+// --- 监控采集 ---
 
-func handleStats(w http.ResponseWriter, r *http.Request) {
-	statsCache.RLock()
-	defer statsCache.RUnlock()
-	if len(statsCache.History) == 0 {
-		json.NewEncoder(w).Encode([]StatsPoint{})
-		return
+func collectStatsLoop() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		point := collectOnePoint()
+		statsCache.Lock()
+		statsCache.History = append(statsCache.History, point)
+		if len(statsCache.History) > 60 { statsCache.History = statsCache.History[1:] }
+		statsCache.Unlock()
 	}
-	json.NewEncoder(w).Encode(statsCache.History)
 }
 
-func handleTrigger(w http.ResponseWriter, r *http.Request) {
-	if TriggerPatrolFunc != nil { go TriggerPatrolFunc() }
-	if TriggerStatusFunc != nil { go TriggerStatusFunc() }
-	w.Write([]byte("指令已发送：正在后台执行巡检和汇报..."))
+func collectOnePoint() StatsPoint {
+	load := strings.TrimSpace(utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }'"))
+	memRaw := utils.ExecuteShell("free -m | awk 'NR==2{print $2,$3}'")
+	var memTotal, memUsed float64
+	fmt.Sscanf(memRaw, "%f %f", &memTotal, &memUsed)
+	memPct := 0.0
+	if memTotal > 0 { memPct = (memUsed / memTotal) * 100 }
+	
+	// 仪表盘只看根目录
+	diskRaw := utils.ExecuteShell("df -h / | awk 'NR==2 {print $5,$4}'")
+	diskParts := strings.Fields(diskRaw)
+	diskPct := "0"
+	diskAvail := "0G"
+	if len(diskParts) >= 2 {
+		diskPct = strings.TrimSuffix(diskParts[0], "%")
+		diskAvail = diskParts[1]
+	}
+	tcpRaw := utils.ExecuteShell("ss -s | grep 'TCP:' | grep -oE 'estab [0-9]+' | awk '{print $2}'")
+	tcpConn := strings.TrimSpace(tcpRaw)
+	if tcpConn == "" { tcpConn = "0" }
+	httpStatus := monitor.RunChecks()
+	return StatsPoint{
+		Time:      time.Now().Format("15:04:05"),
+		Load:      load,
+		MemPct:    fmt.Sprintf("%.1f", memPct),
+		MemUsed:   fmt.Sprintf("%.0f", memUsed),
+		MemTotal:  fmt.Sprintf("%.0f", memTotal),
+		DiskPct:   diskPct,
+		DiskAvail: diskAvail,
+		TcpConn:   tcpConn,
+		Services:  httpStatus,
+	}
 }
+
+// --- 基础认证 ---
+
+func basicAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userCfg := config.GlobalConfig.WebUser
+		passCfg := config.GlobalConfig.WebPassword
+		if userCfg == "" || passCfg == "" {
+			next(w, r)
+			return
+		}
+		user, pass, ok := r.BasicAuth()
+		if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(userCfg)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(passCfg)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
+// --- WebSocket 聊天 ---
 
 func handleWSChat(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -215,7 +229,7 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 			conn.WriteJSON(map[string]string{"type": "answer", "content": staticResp})
 			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
 			continue
-			}
+		}
 		quickCmd := agent.GetQuickCommand(input)
 		if quickCmd != "" {
 			conn.WriteJSON(map[string]string{"type": "status", "content": "⚡ 快速执行: " + quickCmd})
@@ -242,60 +256,105 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func basicAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		userCfg := config.GlobalConfig.WebUser
-		passCfg := config.GlobalConfig.WebPassword
-		if userCfg == "" || passCfg == "" { next(w, r); return }
-		user, pass, ok := r.BasicAuth()
-		if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(userCfg)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(passCfg)) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next(w, r)
-	}
+// --- 其他 API ---
+
+func handleLogs(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(logger.GetWebLogs())
 }
 
-func WebLog(msg string) { logger.Info(msg) }
-
-func Start(port string) {
-	var err error
-	logFile, err = os.OpenFile("qwq.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Printf("无法创建日志文件: %v\n", err)
+func handleStats(w http.ResponseWriter, r *http.Request) {
+	statsCache.RLock()
+	defer statsCache.RUnlock()
+	if len(statsCache.History) == 0 {
+		json.NewEncoder(w).Encode([]StatsPoint{})
+		return
 	}
+	json.NewEncoder(w).Encode(statsCache.History)
+}
 
-	go collectStatsLoop()
+func handleTrigger(w http.ResponseWriter, r *http.Request) {
+	if TriggerPatrolFunc != nil { go TriggerPatrolFunc() }
+	if TriggerStatusFunc != nil { go TriggerStatusFunc() }
+	w.Write([]byte("指令已发送：正在后台执行巡检和汇报..."))
+}
 
-	distFS, err := fs.Sub(frontendDist, "dist")
-	if err != nil {
-		logger.Info("⚠️ 前端资源加载异常: %v", err)
-	} else {
-		fileServer := http.FileServer(http.FS(distFS))
-		http.Handle("/assets/", fileServer)
-		http.HandleFunc("/", basicAuth(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws/") {
-				return 
+func WebLog(msg string) {
+	logger.Info(msg)
+}
+
+// --- 巡检逻辑 ---
+
+func performPatrol() {
+	logger.Info("正在执行系统巡检...")
+	var anomalies []string
+
+	// 1. 磁盘检查：过滤 loop, snap, overlay
+	diskOut := utils.ExecuteShell("df -h")
+	diskLines := strings.Split(diskOut, "\n")
+	
+	for _, line := range diskLines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "Filesystem") {
+			continue
+		}
+
+		// 过滤
+		if strings.Contains(line, "/dev/loop") || 
+		   strings.Contains(line, "/snap") || 
+		   strings.Contains(line, "tmpfs") || 
+		   strings.Contains(line, "overlay") || 
+		   strings.Contains(line, "cdrom") {
+			continue
+		}
+
+		// 解析使用率
+		fields := strings.Fields(line)
+		if len(fields) >= 5 {
+			useStr := strings.TrimSuffix(fields[4], "%")
+			usePct, err := strconv.Atoi(useStr)
+			if err == nil && usePct > 85 {
+				anomalies = append(anomalies, fmt.Sprintf("**磁盘告警 (%s)**:\n```\n%s\n```", fields[0], line))
 			}
-			fileServer.ServeHTTP(w, r)
-		}))
+		}
 	}
 
-	http.HandleFunc("/api/logs", basicAuth(handleLogs))
-	http.HandleFunc("/api/stats", basicAuth(handleStats))
-	http.HandleFunc("/api/trigger", basicAuth(handleTrigger))
-	http.HandleFunc("/api/containers", basicAuth(handleContainers))
-	http.HandleFunc("/api/container/action", basicAuth(handleContainerAction))
-
-	http.HandleFunc("/ws/chat", basicAuth(handleWSChat))
-
-	logger.Info("🚀 qwq Dashboard started at http://localhost" + port)
-	if config.GlobalConfig.WebUser != "" {
-		logger.Info("🔒 安全模式已开启 (Basic Auth)")
+	if out := utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }' | awk '{ if ($1 > 4.0) print $0 }'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
+		anomalies = append(anomalies, "**高负载**:\n```\n"+strings.TrimSpace(out)+"\n```")
+	}
+	dmesgOut := utils.ExecuteShell("dmesg | grep -i 'out of memory' | tail -n 5")
+	if !strings.Contains(dmesgOut, "Operation not permitted") && !strings.Contains(dmesgOut, "不允许的操作") && strings.TrimSpace(dmesgOut) != "" && !strings.Contains(dmesgOut, "exit status") {
+		anomalies = append(anomalies, "**OOM日志**:\n```\n"+strings.TrimSpace(dmesgOut)+"\n```")
+	}
+	rawZombies := utils.ExecuteShell("ps -A -o stat,ppid,pid,cmd | awk '$1 ~ /^[Zz]/'")
+	if strings.TrimSpace(rawZombies) != "" && !strings.Contains(rawZombies, "exit status") {
+		detailZombie := "STAT    PPID     PID CMD\n" + rawZombies
+		anomalies = append(anomalies, "**僵尸进程**:\n```\n"+strings.TrimSpace(detailZombie)+"\n```")
 	}
 
-	if err := http.ListenAndServe(port, nil); err != nil {
-		fmt.Printf("Web Server Error: %v\n", err)
+	for _, rule := range config.GlobalConfig.PatrolRules {
+		out := utils.ExecuteShell(rule.Command)
+		if strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
+			logger.Info(fmt.Sprintf("⚠️ 触发自定义规则: %s", rule.Name))
+			anomalies = append(anomalies, fmt.Sprintf("**%s**:\n```\n%s\n```", rule.Name, strings.TrimSpace(out)))
+		}
+	}
+
+	httpResults := monitor.RunChecks()
+	for _, res := range httpResults {
+		if !res.Success {
+			logger.Info(fmt.Sprintf("⚠️ HTTP 监控失败: %s", res.Name))
+			anomalies = append(anomalies, fmt.Sprintf("**HTTP异常 (%s)**:\n%s", res.Name, res.Error))
+		}
+	}
+
+	if len(anomalies) > 0 {
+		report := strings.Join(anomalies, "\n")
+		logger.Info("🚨 发现异常，正在请求 AI 分析...")
+		analysis := agent.AnalyzeWithAI(report)
+		alertMsg := fmt.Sprintf("🚨 **系统告警** [%s]\n\n%s\n\n💡 **处理建议**:\n%s", utils.GetHostname(), report, analysis)
+		notify.Send("系统告警", alertMsg)
+		logger.Info("告警已推送")
+	} else {
+		logger.Info("✔ 系统健康")
 	}
 }
