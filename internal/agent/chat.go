@@ -86,11 +86,11 @@ func GetQuickCommand(input string) string {
 	return ""
 }
 
-// 静态规则拦截器
 func CheckStaticResponse(input string) string {
 	input = strings.ToLower(strings.TrimSpace(input))
-	if input == "你好" || input == "你是谁" || input == "版本" || input == "version" || input == "whoami"
-	{
+	
+	// 1. 身份/版本类
+	if input == "你好" || input == "你是谁" || input == "版本" || input == "version" || input == "whoami" || strings.Contains(input, "介绍") {
 		return fmt.Sprintf(`**qwq-aiops %s**
 --------------------------------
 我是您的私有化智能运维专家。
@@ -104,6 +104,7 @@ func CheckStaticResponse(input string) string {
 *请直接下达运维指令，例如：“看看内存” 或 “生成 nginx yaml”。*`, Version)
 	}
 
+	// 2. 帮助类
 	if input == "help" || input == "帮助" || input == "能做什么" {
 		return `**可用指令示例：**
 - 🔍 **查询**：看看内存、查负载、看Docker容器、看K8s Pod
@@ -111,6 +112,8 @@ func CheckStaticResponse(input string) string {
 - 📄 **生成**：写一个 busybox yaml、生成 python hello world
 - 📊 **报表**：生成系统状态日报`
 	}
+
+	return ""
 }
 
 func GetBaseMessages() []openai.ChatCompletionMessage {
