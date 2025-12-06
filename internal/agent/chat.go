@@ -18,7 +18,7 @@ import (
 const (
 	DefaultModel   = "Qwen/Qwen2.5-7B-Instruct"
 	DefaultBaseURL = "https://api.siliconflow.cn/v1"
-	Version        = "v3.3.0 Enterprise"
+	Version        = "v3.2.0 Enterprise"
 )
 
 var Client *openai.Client
@@ -53,93 +53,42 @@ var Tools = []openai.Tool{
 
 func GetQuickCommand(input string) string {
 	input = strings.ToLower(strings.TrimSpace(input))
-	
-	// --- 1. Kubernetes 专区 ---
-	// 节点状态 (详细信息)
-	if strings.Contains(input, "node") || strings.Contains(input, "节点") {
-		return "kubectl get nodes -o wide"
-	}
-	// Pod 状态 (所有命名空间 + IP信息)
-	if strings.Contains(input, "pod") || strings.Contains(input, "容器组") {
-		return "kubectl get pods -A -o wide --sort-by=.metadata.creationTimestamp"
-	}
-	// Service 服务
-	if strings.Contains(input, "svc") || strings.Contains(input, "service") || strings.Contains(input, "服务") {
-		return "kubectl get svc -A"
-	}
-	// Deployment 部署
-	if strings.Contains(input, "deploy") || strings.Contains(input, "部署") {
-		return "kubectl get deploy -A"
-	}
-	// Events 事件 (排查 K8s 报错，按时间倒序)
-	if strings.Contains(input, "event") || strings.Contains(input, "事件") || strings.Contains(input, "k8s报错") {
-		return "kubectl get events -A --sort-by='.lastTimestamp' | tail -n 20"
-	}
-	// 集群信息
-	if input == "k8s" || strings.Contains(input, "集群信息") || strings.Contains(input, "cluster") {
-		return "kubectl cluster-info"
-	}
-	// 资源使用情况 (Top)
-	if strings.Contains(input, "k8s资源") || strings.Contains(input, "pod内存") || strings.Contains(input, "pod cpu") {
-		return "kubectl top pods -A --sort-by=cpu | head -n 15"
+	if strings.Contains(input, "qwq") || strings.Contains(input, "ops") {
+		if strings.Contains(input, "镜像") {
+			return "docker images | grep qwq"
+		}
+		return "docker ps -a | grep qwq || ps aux | grep qwq"
 	}
 
-	// --- 2. Docker 专区 ---
-	// 容器列表 (包含退出的)
-	if input == "docker" || input == "看看docker" || input == "docker容器" {
-		return "docker ps -a"
-	}
-	// 镜像列表
-	if strings.Contains(input, "镜像") || strings.Contains(input, "image") {
-		return "docker images"
-	}
-	// 容器资源统计 (实时)
-	if strings.Contains(input, "docker资源") || strings.Contains(input, "容器内存") {
-		return "docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}'"
+	// 1. 状态/运行类
+	if strings.Contains(input, "运行") || strings.Contains(input, "状态") || strings.Contains(input, "活") || strings.Contains(input, "挂") {
+		if strings.Contains(input, "docker") || strings.Contains(input, "容器") {
+			return "docker ps -a"
+		}
+		if strings.Contains(input, "pod") {
+			return "kubectl get pods -A"
+		}
+		// 默认看负载
+		return "top -b -n 1 | head -15"
 	}
 
-	// --- 3. Linux 基础资源 ---
-	// 内存
+	// 2. 资源类
 	if strings.Contains(input, "内存") || strings.Contains(input, "memory") {
 		return "free -h"
 	}
-	// 磁盘
 	if strings.Contains(input, "磁盘") || strings.Contains(input, "硬盘") || strings.Contains(input, "disk") {
-		return "df -hT | grep -v tmpfs" // 排除 tmpfs 干扰
+		return "df -hT | grep -v tmpfs"
 	}
-	// 负载/CPU
-	if strings.Contains(input, "负载") || strings.Contains(input, "cpu") || strings.Contains(input, "load") {
-		return "top -b -n 1 | head -n 15" // 只看前15行
-	}
-	// 进程 (按 CPU 排序)
-	if strings.Contains(input, "进程") && !strings.Contains(input, "杀") {
-		return "ps aux --sort=-%cpu | head -n 15"
+	if strings.Contains(input, "负载") || strings.Contains(input, "cpu") {
+		return "uptime && top -b -n 1 | head -15"
 	}
 
-	// --- 4. 网络与系统信息 ---
-	// 端口监听
-	if strings.Contains(input, "端口") || strings.Contains(input, "port") || strings.Contains(input, "监听") {
-		return "netstat -tulpn"
+	// 3. Docker/K8s 概览
+	if input == "docker" || input == "容器" {
+		return "docker ps -a"
 	}
-	// 网络连接数统计
-	if strings.Contains(input, "连接数") || strings.Contains(input, "并发") {
-		return "netstat -ant | awk '{print $6}' | sort | uniq -c | sort -rn"
-	}
-	// IP 地址
-	if input == "ip" || strings.Contains(input, "ip地址") {
-		return "ip -4 a | grep inet | grep -v 127.0.0.1"
-	}
-	// 系统版本
-	if strings.Contains(input, "系统") || strings.Contains(input, "os") || strings.Contains(input, "发行版") {
-		return "cat /etc/os-release"
-	}
-	// 内核版本
-	if strings.Contains(input, "内核") || strings.Contains(input, "kernel") {
-		return "uname -sr"
-	}
-	// 登录用户
-	if strings.Contains(input, "用户") || strings.Contains(input, "who") {
-		return "w"
+	if strings.Contains(input, "镜像") || strings.Contains(input, "image") {
+		return "docker images"
 	}
 	
 	return ""
@@ -186,16 +135,21 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 用户身份：**Root 管理员**。
 
 【决策逻辑】
-1. **查询系统状态**：
-   - **必须**调用 execute_shell_command。
-   - **严禁**生成 Python/Shell 脚本来查询，直接用系统命令。
+1. **模糊名词处理**：
+   - 如果用户只说一个名词（如 "nginx", "qwq-ops", "mysql"），**默认意图是查询其运行状态**。
+   - **必须**执行 'ps aux | grep xxx' 或 'docker ps | grep xxx'。
+   - **严禁**生成清理日志、备份等维护脚本，除非用户明确要求。
 
-2. **生成文件/代码**：
+2. **查询系统状态**：
+   - **必须**调用 execute_shell_command。
+   - **严禁**生成 Python/Shell 脚本来查询。
+
+3. **生成文件/代码**：
    - 只有当用户明确说 "写一个..."、"生成..."、"代码" 时。
    - 输出 Markdown 代码块。
    - **严禁**输出 echo 命令，只输出文件内容。
 
-3. **禁止废话**：
+4. **禁止废话**：
    - 不要解释命令，不要说 "你可以使用..."。
 
 %s`, knowledgePart)
@@ -203,21 +157,24 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
-		// 样本 1: 运维查询
-		{Role: openai.ChatMessageRoleUser, Content: "分析一下 nginx 为什么挂了"},
+		// 样本 1: 名词 -> 查状态
+		{Role: openai.ChatMessageRoleUser, Content: "看看 nginx"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
 			ToolCalls: []openai.ToolCall{{
 				ID: "call_1", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "systemctl status nginx || docker logs nginx", "reason": "check nginx status"}`},
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "ps aux | grep nginx", "reason": "check nginx process"}`},
 			}},
 		},
 
-		// 样本 2: 代码生成
-		{Role: openai.ChatMessageRoleUser, Content: "写一个清理日志的脚本"},
+		// 样本 2: 运维查询
+		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
-			Content: "```bash\n#!/bin/bash\nfind /var/log -name \"*.log\" -mtime +7 -delete\n```",
+			ToolCalls: []openai.ToolCall{{
+				ID: "call_2", Type: openai.ToolTypeFunction,
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
+			}},
 		},
 	}
 }
