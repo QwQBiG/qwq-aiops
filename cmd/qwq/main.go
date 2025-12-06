@@ -106,7 +106,15 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		line, _ := rl.Readline()
 		if line == "exit" { break }
 		if line == "" { continue }
-		
+
+		staticResp := agent.CheckStaticResponse(line)
+		if staticResp != "" {
+			r, _ := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(100))
+			out, _ := r.Render(staticResp)
+			fmt.Print(out)
+			continue
+		}
+
 		safeInput := security.Redact(line)
 		enhancedInput := safeInput + " (Context: Current Linux Server)"
 		

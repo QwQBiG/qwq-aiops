@@ -152,8 +152,14 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 		if err != nil { break }
 		input := string(msg)
 
-		enhancedInput := input + " (System: Execute command or output file content ONLY. No chat.)"
-		
+		staticResp := agent.CheckStaticResponse(input)
+		if staticResp != "" {
+			conn.WriteJSON(map[string]string{"type": "answer", "content": staticResp})
+			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
+			continue
+		}
+
+		enhancedInput := input + " (Context: Current Linux Server)"
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 
 		for i := 0; i < 5; i++ {

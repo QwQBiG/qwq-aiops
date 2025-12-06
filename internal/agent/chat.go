@@ -1,11 +1,9 @@
 package agent
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"qwq/internal/config"
 	"qwq/internal/utils"
 	"regexp"
@@ -18,7 +16,7 @@ import (
 const (
 	DefaultModel   = "Qwen/Qwen2.5-7B-Instruct"
 	DefaultBaseURL = "https://api.siliconflow.cn/v1"
-	Version        = "v3.0.0 Enterprise"
+	Version        = "v3.1.0 Enterprise"
 )
 
 var Client *openai.Client
@@ -51,34 +49,61 @@ var Tools = []openai.Tool{
 	},
 }
 
+// 拦截器
+func CheckStaticResponse(input string) string {
+	input = strings.ToLower(strings.TrimSpace(input))
+	
+	// 1. 身份/版本类
+	if input == "你好" || input == "你是谁" || input == "版本" || input == "version" || input == "whoami" || strings.Contains(input, "介绍") {
+		return fmt.Sprintf(`**qwq-aiops %s**
+--------------------------------
+我是您的私有化智能运维专家。
+
+**核心能力：**
+1. 🛠️ **自动巡检**：监控系统负载、Docker、K8s 状态。
+2. ⚡ **命令执行**：直接执行 "看看内存"、"查负载"。
+3. 📝 **配置生成**：生成 YAML、Python 脚本。
+4. 🔒 **安全风控**：高危命令自动拦截。
+
+*请直接下达运维指令，例如：“看看内存” 或 “生成 nginx yaml”。*`, Version)
+	}
+
+	// 2. 帮助类
+	if input == "help" || input == "帮助" || input == "能做什么" {
+		return `**可用指令示例：**
+- 🔍 **查询**：看看内存、查负载、看Docker容器、看K8s Pod
+- ⚙️ **操作**：重启 nginx (需确认)、清理磁盘
+- 📄 **生成**：写一个 busybox yaml、生成 python hello world
+- 📊 **报表**：生成系统状态日报`
+	}
+
+	return ""
+}
+
 func GetBaseMessages() []openai.ChatCompletionMessage {
 	knowledgePart := ""
 	if config.CachedKnowledge != "" {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **Linux 运维终端 (Ops Terminal)**。
+	sysPrompt := fmt.Sprintf(`你是一个 **Linux 运维终端**。
 当前环境：**Linux Server**。
 用户身份：**Root 管理员**。
 
 【最高指令】
-1. **禁止闲聊**：用户问 "你好"、"你是谁"、"版本"，直接输出当前版本号。
-2. **查询即执行**：用户问 "内存"、"负载"、"Docker"，**必须**调用 execute_shell_command。
-3. **文件生成**：
-   - 用户问 "写个yaml"、"生成配置"，**只输出文件内容**（Markdown代码块）。
-   - **严禁**输出 "你可以使用 echo..." 或 "kubectl apply..." 等后续操作命令。
-   - **严禁**在文件内容后附加任何解释文字。
+1. **查询即执行**：用户问 "内存"、"负载"、"Docker"，**必须**调用 execute_shell_command。
+2. **文件生成**：
+   - 用户问 "写个yaml"、"生成配置"，**只输出文件内容**。
+   - **必须**使用 Markdown 代码块包裹 (e.g., `+"```yaml ... ```"+`)。
+   - **严禁**输出任何解释文字（如 "好的"、"这是文件"）。
+   - **严禁**输出 echo 命令。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
-		// 样本 1: 版本查询
-		{Role: openai.ChatMessageRoleUser, Content: "你好"},
-		{Role: openai.ChatMessageRoleAssistant, Content: fmt.Sprintf("qwq-aiops %s", Version)},
-
-		// 样本 2: 运维查询
+		// 样本 1: 运维查询
 		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
@@ -88,7 +113,7 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 			}},
 		},
 
-		// 样本 3: 文件生成
+		// 样本 2: 文件生成
 		{Role: openai.ChatMessageRoleUser, Content: "写一个 hello.py"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
@@ -148,10 +173,22 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	// 2. CLI
+	// 2. CLI 模式：检测代码块并询问保存
 	if len(isCLI) > 0 && isCLI[0] {
 		filename, content := extractCodeBlock(msg.Content)
 		if filename != "" && content != "" {
+			fmt.Printf("\n\033[36m💾 检测到配置文件，是否保存为 '%s'? (y/N): \033[0m", filename)
+			reader := bufio.NewReader(os.Stdin)
+			input, _ := reader.ReadString('\n')
+			input = strings.TrimSpace(strings.ToLower(input))
+			if input == "y" || input == "yes" {
+				err := os.WriteFile(filename, []byte(content), 0644)
+				if err == nil {
+					fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
+				} else {
+					fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
+				}
+			}
 			return msg, true
 		}
 	}
@@ -240,10 +277,6 @@ func getModelName() string {
 }
 
 func extractCommandFromText(text string) string {
-	if strings.Contains(text, "```yaml") || strings.Contains(text, "```json") || strings.Contains(text, "```python") {
-		return ""
-	}
-
 	re := regexp.MustCompile("(?s)```(?:bash|shell|sh)?\\n(.*?)\\n```")
 	matches := re.FindStringSubmatch(text)
 	if len(matches) > 1 {
@@ -263,13 +296,10 @@ func extractCommandFromText(text string) string {
 
 func extractCodeBlock(text string) (string, string) {
 	re := regexp.MustCompile("(?s)```([a-zA-Z0-9]+)?\\n(.*?)\\n```")
-	matches := re.FindAllStringSubmatch(text, -1)
-
-	if len(matches) > 0 {
-		match := matches[0]
-		if len(match) < 3 { return "", "" }
-		lang := match[1]
-		content := match[2]
+	matches := re.FindStringSubmatch(text)
+	if len(matches) > 2 {
+		lang := matches[1]
+		content := matches[2]
 		
 		// 1. 垃圾过滤
 		if strings.Contains(content, "PID") || strings.Contains(content, "REPOSITORY") || 
