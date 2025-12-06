@@ -349,12 +349,14 @@ func performPatrol() {
 		}
 	}
 
-	// --- 额外过滤 loop 设备 ---
 	var cleanedAnomalies []string
 	for _, anomaly := range anomalies {
 		if !strings.Contains(anomaly, "/dev/loop") && 
 		   !strings.Contains(anomaly, "/snap") && 
-		   !strings.Contains(anomaly, "overlay") {
+		   !strings.Contains(anomaly, "snap/") &&
+		   !strings.Contains(anomaly, "/hostfs") &&
+		   !strings.Contains(anomaly, "overlay") &&
+		   !strings.Contains(anomaly, "tmpfs") {
 			cleanedAnomalies = append(cleanedAnomalies, anomaly)
 		}
 	}
@@ -375,11 +377,19 @@ func performPatrol() {
 }
 
 func isIgnoredDisk(line string) bool {
-	return strings.Contains(line, "/dev/loop") || 
-		   strings.Contains(line, "/snap") || 
-		   strings.Contains(line, "tmpfs") || 
-		   strings.Contains(line, "overlay") || 
-		   strings.Contains(line, "cdrom")
+	if strings.Contains(line, "/dev/loop") {
+		return true
+	}
+	if strings.Contains(line, "/snap") || strings.Contains(line, "snap/") {
+		return true
+	}
+	if strings.Contains(line, "tmpfs") || 
+	   strings.Contains(line, "overlay") || 
+	   strings.Contains(line, "cdrom") ||
+	   strings.Contains(line, "/hostfs") {
+		return true
+	}
+	return false
 }
 
 func cleanAIAnalysis(analysis string) string {
