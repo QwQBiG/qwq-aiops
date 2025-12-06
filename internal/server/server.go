@@ -353,9 +353,19 @@ func performPatrol() {
 		}
 	}
 
+	// 过滤
+	var cleanedAnomalies []string
+	for _, anomaly := range anomalies {
+		if !strings.Contains(anomaly, "/dev/loop") && 
+		   !strings.Contains(anomaly, "/snap") && 
+		   !strings.Contains(anomaly, "overlay") {
+			cleanedAnomalies = append(cleanedAnomalies, anomaly)
+		}
+	}
+
 	// 发送告警
-	if len(anomalies) > 0 {
-		report := strings.Join(anomalies, "\n")
+	if len(cleanedAnomalies) > 0 {
+		report := strings.Join(cleanedAnomalies, "\n")
 		logger.Info("🚨 发现异常，正在请求 AI 分析...")
 		analysis := agent.AnalyzeWithAI(report)
 		alertMsg := fmt.Sprintf("🚨 **系统告警** [%s]\n\n%s\n\n💡 **处理建议**:\n%s", utils.GetHostname(), report, analysis)
@@ -365,3 +375,4 @@ func performPatrol() {
 		logger.Info("✔ 系统健康")
 	}
 }
+
