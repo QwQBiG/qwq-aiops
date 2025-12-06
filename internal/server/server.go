@@ -273,22 +273,24 @@ func WebLog(msg string) {
 	logger.Info(msg)
 }
 
-// 巡检逻辑：过滤 loop 设备
 func performPatrol() {
 	logger.Info("正在执行系统巡检...")
 	var anomalies []string
 
-	// 过滤 loop, tmpfs, cdrom, overlay
-	if out := utils.ExecuteShell("df -h | grep -vE '^Filesystem|tmpfs|cdrom|efivarfs|overlay|loop' | awk 'int($5) > 85 {print $0}'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
+	diskCmd := "df -h | grep -vE '^Filesystem|tmpfs|cdrom|efivarfs|overlay|loop|/snap|/hostfs/snap' | awk 'int($5) > 85 {print $0}'"
+	if out := utils.ExecuteShell(diskCmd); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
 		anomalies = append(anomalies, "**磁盘告警**:\n```\n"+strings.TrimSpace(out)+"\n```")
 	}
+
 	if out := utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }' | awk '{ if ($1 > 4.0) print $0 }'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
 		anomalies = append(anomalies, "**高负载**:\n```\n"+strings.TrimSpace(out)+"\n```")
 	}
+
 	dmesgOut := utils.ExecuteShell("dmesg | grep -i 'out of memory' | tail -n 5")
 	if !strings.Contains(dmesgOut, "Operation not permitted") && !strings.Contains(dmesgOut, "不允许的操作") && strings.TrimSpace(dmesgOut) != "" && !strings.Contains(dmesgOut, "exit status") {
 		anomalies = append(anomalies, "**OOM日志**:\n```\n"+strings.TrimSpace(dmesgOut)+"\n```")
 	}
+
 	rawZombies := utils.ExecuteShell("ps -A -o stat,ppid,pid,cmd | awk '$1 ~ /^[Zz]/'")
 	if strings.TrimSpace(rawZombies) != "" && !strings.Contains(rawZombies, "exit status") {
 		detailZombie := "STAT    PPID     PID CMD\n" + rawZombies
@@ -321,4 +323,35 @@ func performPatrol() {
 	} else {
 		logger.Info("✔ 系统健康")
 	}
+}
+
+func sendSystemStatus() {
+	hostname := utils.GetHostname()
+	ip := strings.TrimSpace(utils.ExecuteShell("ip route get 1 | awk '{print $7; exit}'"))
+	uptime := strings.TrimSpace(utils.ExecuteShell("uptime -p"))
+	memInfo := strings.TrimSpace(utils.ExecuteShell("free -m | awk 'NR==2{printf \"%.1f%% (已用 %sM / 总计 %sM)\", $3/$2*100, $3, $2}'"))
+	diskInfo := strings.TrimSpace(utils.ExecuteShell("df -h / | awk 'NR==2 {print $5 \" (剩余 \" $4 \")\"}'"))
+	loadInfo := strings.TrimSpace(utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }'"))
+	
+	report := fmt.Sprintf(`### 📊 服务器状态日报 [%s]
+
+> **IP**: %s
+> **运行**: %s
+
+---
+
+| 指标 | 状态 |
+| :--- | :--- |
+| **CPU负载** | %s |
+| **内存使用** | %s |
+| **系统磁盘** | %s |
+| **TCP连接** | %s |
+
+---
+*qwq AIOps 自动监控*
+`, hostname, ip, uptime, loadInfo, memInfo, diskInfo,
+		strings.TrimSpace(utils.ExecuteShell("netstat -ant | grep ESTABLISHED | wc -l")))
+	
+	notify.Send("服务器状态日报", report)
+	logger.Info("✅ 健康日报已发送")
 }
