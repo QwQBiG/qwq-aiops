@@ -77,8 +77,8 @@ func main() {
 func runWebMode(cmd *cobra.Command, args []string) {
 	server.TriggerPatrolFunc = performPatrol
 	server.TriggerStatusFunc = sendSystemStatus
+	// 启动定时任务（包含启动时的日报发送）
 	go runPatrolLoop(8 * time.Hour)
-	go sendSystemStatus()
 	server.Start(":8899")
 }
 
@@ -160,11 +160,26 @@ func runPatrolLoop(interval time.Duration) {
 	reportTicker := time.NewTicker(interval)
 	defer checkTicker.Stop()
 	defer reportTicker.Stop()
+	
+	// 启动时立即执行一次巡检
 	performPatrol()
+	
+	// 启动时延迟一小段时间后发送第一次日报（避免和立即发送的冲突）
+	go func() {
+		time.Sleep(30 * time.Second)
+		sendSystemStatus()
+	}()
+	
+	logger.Info("📅 定时任务已启动: 巡检每5分钟, 日报每%v", interval)
+	
 	for {
 		select {
-		case <-checkTicker.C: performPatrol()
-		case <-reportTicker.C: sendSystemStatus()
+		case <-checkTicker.C:
+			logger.Info("⏰ 定时巡检触发")
+			performPatrol()
+		case <-reportTicker.C:
+			logger.Info("⏰ 定时日报触发")
+			sendSystemStatus()
 		}
 	}
 }
@@ -259,17 +274,59 @@ func performPatrol() {
 }
 
 func sendSystemStatus() {
+	// 检查是否有配置通知渠道
+	if config.GlobalConfig.DingTalkWebhook == "" && 
+	   (config.GlobalConfig.TelegramToken == "" || config.GlobalConfig.TelegramChatID == "") {
+		logger.Info("⚠️ 未配置通知渠道，跳过日报发送")
+		return
+	}
+	
 	hostname := utils.GetHostname()
-	ip := strings.TrimSpace(utils.ExecuteShell("ip route get 1 | awk '{print $7; exit}'"))
-	uptime := strings.TrimSpace(utils.ExecuteShell("uptime -p"))
+	
+	// 获取IP地址（多种方法尝试）
+	ip := strings.TrimSpace(utils.ExecuteShell("ip route get 1 2>/dev/null | awk '{print $7; exit}' || hostname -I 2>/dev/null | awk '{print $1}' || echo 'N/A'"))
+	if ip == "" || strings.Contains(ip, "exit status") {
+		ip = "N/A"
+	}
+	
+	// 获取运行时间
+	uptime := strings.TrimSpace(utils.ExecuteShell("uptime -p 2>/dev/null || uptime | awk -F'up' '{print $2}' | awk '{print $1,$2,$3}'"))
+	if uptime == "" || strings.Contains(uptime, "exit status") {
+		uptime = "N/A"
+	}
+	
+	// 获取内存信息
 	memInfo := strings.TrimSpace(utils.ExecuteShell("free -m | awk 'NR==2{printf \"%.1f%% (已用 %sM / 总计 %sM)\", $3/$2*100, $3, $2}'"))
-	diskInfo := strings.TrimSpace(utils.ExecuteShell("df -h / | awk 'NR==2 {print $5 \" (剩余 \" $4 \")\"}'"))
-	loadInfo := strings.TrimSpace(utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }'"))
+	if memInfo == "" || strings.Contains(memInfo, "exit status") {
+		memInfo = "N/A"
+	}
+	
+	// 获取磁盘信息（只检查根目录，过滤掉 loop 设备）
+	diskInfo := strings.TrimSpace(utils.ExecuteShell("df -h / 2>/dev/null | awk 'NR==2 {print $5 \" (剩余 \" $4 \")\"}'"))
+	if diskInfo == "" || strings.Contains(diskInfo, "exit status") {
+		diskInfo = "N/A"
+	}
+	
+	// 获取负载信息
+	loadInfo := strings.TrimSpace(utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }' | sed 's/^ *//'"))
+	if loadInfo == "" || strings.Contains(loadInfo, "exit status") {
+		loadInfo = "N/A"
+	}
+	
+	// 获取TCP连接数（多种方法尝试）
+	tcpConn := strings.TrimSpace(utils.ExecuteShell("ss -s 2>/dev/null | grep 'TCP:' | grep -oE 'estab [0-9]+' | awk '{print $2}' || netstat -ant 2>/dev/null | grep ESTABLISHED | wc -l || echo '0'"))
+	if tcpConn == "" || strings.Contains(tcpConn, "exit status") {
+		tcpConn = "0"
+	}
+	
+	// 获取当前时间
+	currentTime := time.Now().Format("2006-01-02 15:04:05")
 	
 	report := fmt.Sprintf(`### 📊 服务器状态日报 [%s]
 
-> **IP**: %s
-> **运行**: %s
+> **IP**: %s  
+> **运行时间**: %s  
+> **报告时间**: %s
 
 ---
 
@@ -281,10 +338,10 @@ func sendSystemStatus() {
 | **TCP连接** | %s |
 
 ---
+
 *qwq AIOps 自动监控*
-`, hostname, ip, uptime, loadInfo, memInfo, diskInfo,
-		strings.TrimSpace(utils.ExecuteShell("netstat -ant | grep ESTABLISHED | wc -l")))
+`, hostname, ip, uptime, currentTime, loadInfo, memInfo, diskInfo, tcpConn)
 	
 	notify.Send("服务器状态日报", report)
-	logger.Info("✅ 健康日报已发送")
+	logger.Info("✅ 健康日报已发送 [%s]", hostname)
 }
