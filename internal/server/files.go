@@ -25,7 +25,6 @@ var BlockList = []string{
 	"/boot",
 }
 
-// FileInfo 增强版文件信息
 type FileInfo struct {
 	Name    string `json:"name"`
 	Size    int64  `json:"size"`
@@ -54,16 +53,21 @@ func jsonResponse(w http.ResponseWriter, code int, msg string, data interface{})
 // --- 安全逻辑 ---
 
 func resolveSafePath(userPath string) (string, error) {
-
+	// 1. 清洗路径，处理 ../ 和多余的 /
 	cleanPath := filepath.Clean(userPath)
-
+	
+	// 2. 检查黑名单
 	for _, blocked := range BlockList {
 		if strings.HasPrefix(cleanPath, blocked) {
 			return "", fmt.Errorf("access denied: path '%s' is in blocklist", cleanPath)
 		}
 	}
 
+	// 3. 拼接挂载点
+	// 如果 userPath 是 "/etc/nginx"，实际路径是 "/hostfs/etc/nginx"
 	realPath := filepath.Join(MountPoint, cleanPath)
+
+	// 4. 二次检查：确保最终路径依然在 MountPoint 内 (防止通过软链接逃逸)
 	if !strings.HasPrefix(realPath, MountPoint) {
 		return "", fmt.Errorf("access denied: path escape detected")
 	}
@@ -105,6 +109,7 @@ func handleFileList(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// 排序：文件夹优先，然后按名称
 	sort.Slice(files, func(i, j int) bool {
 		if files[i].IsDir != files[j].IsDir {
 			return files[i].IsDir
@@ -126,6 +131,7 @@ func handleFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 检查文件大小 (限制 2MB，防止浏览器崩溃)
 	info, err := os.Stat(realPath)
 	if err != nil {
 		jsonResponse(w, 404, "文件不存在", nil)
@@ -142,11 +148,13 @@ func handleFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 检查是否为二进制文件 (通过检测 UTF-8 有效性)
 	if !utf8.Valid(content) {
 		jsonResponse(w, 400, "检测到二进制文件，不支持编辑", nil)
 		return
 	}
 
+	// 直接返回内容文本
 	w.Write(content)
 }
 
@@ -194,6 +202,7 @@ func handleFileAction(w http.ResponseWriter, r *http.Request) {
 
 	switch action {
 	case "delete":
+		// 再次检查是否为根目录保护
 		if userPath == "/" || realPath == MountPoint {
 			jsonResponse(w, 403, "禁止删除根目录", nil)
 			return
@@ -219,8 +228,10 @@ func handleFileAction(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, "success", nil)
 }
 
+// --- 辅助函数：原子写入 ---
 func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(filename)
+
 	tmpFile, err := os.CreateTemp(dir, "qwq_tmp_*")
 	if err != nil {
 		return err
@@ -228,6 +239,7 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 	tmpName := tmpFile.Name()
 
 	defer os.Remove(tmpName)
+
 
 	if _, err := tmpFile.Write(data); err != nil {
 		tmpFile.Close()
@@ -240,5 +252,7 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 	}
 	if err := tmpFile.Close(); err != nil {
 		return err
+	}
+
 	return os.Rename(tmpName, filename)
 }
