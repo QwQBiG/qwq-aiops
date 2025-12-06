@@ -52,38 +52,95 @@ var Tools = []openai.Tool{
 }
 
 func GetQuickCommand(input string) string {
-	input = strings.ToLower(input)
+	input = strings.ToLower(strings.TrimSpace(input))
 	
+	// --- 1. Kubernetes 专区 ---
+	// 节点状态
+	if strings.Contains(input, "node") || strings.Contains(input, "节点") {
+		return "kubectl get nodes -o wide"
+	}
+	// Pod 状态
+	if strings.Contains(input, "pod") || strings.Contains(input, "容器组") {
+		return "kubectl get pods -A -o wide --sort-by=.metadata.creationTimestamp"
+	}
+	// Service 服务
+	if strings.Contains(input, "svc") || strings.Contains(input, "service") || strings.Contains(input, "服务") {
+		return "kubectl get svc -A"
+	}
+	// Deployment 部署
+	if strings.Contains(input, "deploy") || strings.Contains(input, "部署") {
+		return "kubectl get deploy -A"
+	}
+	// Events 事件
+	if strings.Contains(input, "event") || strings.Contains(input, "事件") || strings.Contains(input, "k8s报错") {
+		return "kubectl get events -A --sort-by='.lastTimestamp' | tail -n 20"
+	}
+	// 集群信息
+	if input == "k8s" || strings.Contains(input, "集群信息") || strings.Contains(input, "cluster") {
+		return "kubectl cluster-info"
+	}
+	// 资源使用情况
+	if strings.Contains(input, "k8s资源") || strings.Contains(input, "pod内存") || strings.Contains(input, "pod cpu") {
+		return "kubectl top pods -A --sort-by=cpu | head -n 15"
+	}
+
+	// --- 2. Docker 专区 ---
+	// 容器列表 (含退出的)
+	if input == "docker" || input == "看看docker" || input == "docker容器" {
+		return "docker ps -a"
+	}
+	// 镜像列表
+	if strings.Contains(input, "镜像") || strings.Contains(input, "image") {
+		return "docker images"
+	}
+	// 容器资源统计
+	if strings.Contains(input, "docker资源") || strings.Contains(input, "容器内存") {
+		return "docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}'"
+	}
+
+	// --- 3. Linux 基础资源 ---
 	// 内存
 	if strings.Contains(input, "内存") || strings.Contains(input, "memory") {
 		return "free -h"
 	}
 	// 磁盘
 	if strings.Contains(input, "磁盘") || strings.Contains(input, "硬盘") || strings.Contains(input, "disk") {
-		return "df -h"
+		return "df -hT | grep -v tmpfs"
 	}
 	// 负载/CPU
 	if strings.Contains(input, "负载") || strings.Contains(input, "cpu") || strings.Contains(input, "load") {
-		return "top -b -n 1 | head -15"
-	}
-	// Docker 概览
-	if input == "docker" || input == "看看docker" || input == "docker容器" {
-		return "docker ps -a"
-	}
-	// Docker 镜像
-	if strings.Contains(input, "镜像") || strings.Contains(input, "image") {
-		return "docker images"
-	}
-	// 网络端口
-	if strings.Contains(input, "端口") || strings.Contains(input, "port") {
-		return "netstat -tulpn"
+		return "top -b -n 1 | head -n 15"
 	}
 	// 进程
 	if strings.Contains(input, "进程") && !strings.Contains(input, "杀") {
-		return "ps aux --sort=-%cpu | head -10"
+		return "ps aux --sort=-%cpu | head -n 15"
 	}
-	
-	return ""
+
+	// --- 4. 网络与系统信息 ---
+	// 端口监听
+	if strings.Contains(input, "端口") || strings.Contains(input, "port") || strings.Contains(input, "监听") {
+		return "netstat -tulpn"
+	}
+	// 网络连接数统计
+	if strings.Contains(input, "连接数") || strings.Contains(input, "并发") {
+		return "netstat -ant | awk '{print $6}' | sort | uniq -c | sort -rn"
+	}
+	// IP 地址
+	if input == "ip" || strings.Contains(input, "ip地址") {
+		return "ip -4 a | grep inet | grep -v 127.0.0.1"
+	}
+	// 系统版本
+	if strings.Contains(input, "系统") || strings.Contains(input, "os") || strings.Contains(input, "发行版") {
+		return "cat /etc/os-release"
+	}
+	// 内核版本
+	if strings.Contains(input, "内核") || strings.Contains(input, "kernel") {
+		return "uname -sr"
+	}
+	// 登录用户
+	if strings.Contains(input, "用户") || strings.Contains(input, "who") {
+		return "w"
+	}
 }
 
 func CheckStaticResponse(input string) string {
