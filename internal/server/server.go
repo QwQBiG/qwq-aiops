@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"notify"
 
 	"github.com/gorilla/websocket"
 	openai "github.com/sashabaranov/go-openai"
