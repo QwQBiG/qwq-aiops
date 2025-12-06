@@ -18,7 +18,7 @@ import (
 const (
 	DefaultModel   = "Qwen/Qwen2.5-7B-Instruct"
 	DefaultBaseURL = "https://api.siliconflow.cn/v1"
-	Version        = "v2.0.0 Enterprise"
+	Version        = "v3.0.0 Enterprise"
 )
 
 var Client *openai.Client
@@ -57,42 +57,34 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **Linux 命令行映射器**。
-你 **没有** 人格，你 **不会** 聊天。你的唯一作用是将自然语言映射为 Shell 命令。
+	sysPrompt := fmt.Sprintf(`你是一个 **Linux 运维终端 (Ops Terminal)**。
+当前环境：**Linux Server**。
+用户身份：**Root 管理员**。
 
-【映射规则】
-1. **打招呼**：用户说 "你好"、"在吗" -> 映射为 "uptime" (检查存活)。
-2. **问身份**：用户说 "你是谁"、"名字" -> 映射为 "whoami" (检查当前用户)。
-3. **运维查询**：用户说 "内存" -> 映射为 "free -h"。
-4. **文件生成**：用户说 "生成yaml" -> 输出纯代码块。
-
-【禁令】
-- **严禁** 输出中文解释（如 "好的"、"我是..."）。
-- **严禁** 自我介绍。
-- **严禁** 解释命令用途。
+【最高指令】
+1. **禁止闲聊**：用户问 "你好"、"你是谁"、"版本"，直接输出当前版本号。
+2. **查询即执行**：用户问 "内存"、"负载"、"Docker"，**必须**调用 execute_shell_command。
+3. **文件生成**：
+   - 用户问 "写个yaml"、"生成配置"，**只输出文件内容**（Markdown代码块）。
+   - **严禁**输出 "你可以使用 echo..." 或 "kubectl apply..." 等后续操作命令。
+   - **严禁**在文件内容后附加任何解释文字。
 
 %s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
-		// 样本 1: 你好
+		// 样本 1: 版本查询
 		{Role: openai.ChatMessageRoleUser, Content: "你好"},
+		{Role: openai.ChatMessageRoleAssistant, Content: fmt.Sprintf("qwq-aiops %s", Version)},
+
+		// 样本 2: 运维查询
+		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
 			ToolCalls: []openai.ToolCall{{
 				ID: "call_1", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "uptime", "reason": "check status"}`},
-			}},
-		},
-
-		// 样本 2: 你是谁
-		{Role: openai.ChatMessageRoleUser, Content: "你是谁"},
-		{
-			Role: openai.ChatMessageRoleAssistant,
-			ToolCalls: []openai.ToolCall{{
-				ID: "call_2", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "whoami", "reason": "check user"}`},
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
 			}},
 		},
 
@@ -156,27 +148,15 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
-	// 2. CLI 模式
+	// 2. CLI
 	if len(isCLI) > 0 && isCLI[0] {
 		filename, content := extractCodeBlock(msg.Content)
 		if filename != "" && content != "" {
-			fmt.Printf("\n\033[36m💾 检测到配置文件，是否保存为 '%s'? (y/N): \033[0m", filename)
-			reader := bufio.NewReader(os.Stdin)
-			input, _ := reader.ReadString('\n')
-			input = strings.TrimSpace(strings.ToLower(input))
-			if input == "y" || input == "yes" {
-				err := os.WriteFile(filename, []byte(content), 0644)
-				if err == nil {
-					fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
-				} else {
-					fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
-				}
-			}
 			return msg, true
 		}
 	}
 
-	// 3. 文本回退机制
+	// 3. 文本回退机制 (自动捕获命令)
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {
@@ -260,6 +240,10 @@ func getModelName() string {
 }
 
 func extractCommandFromText(text string) string {
+	if strings.Contains(text, "```yaml") || strings.Contains(text, "```json") || strings.Contains(text, "```python") {
+		return ""
+	}
+
 	re := regexp.MustCompile("(?s)```(?:bash|shell|sh)?\\n(.*?)\\n```")
 	matches := re.FindStringSubmatch(text)
 	if len(matches) > 1 {
@@ -279,10 +263,13 @@ func extractCommandFromText(text string) string {
 
 func extractCodeBlock(text string) (string, string) {
 	re := regexp.MustCompile("(?s)```([a-zA-Z0-9]+)?\\n(.*?)\\n```")
-	matches := re.FindStringSubmatch(text)
-	if len(matches) > 2 {
-		lang := matches[1]
-		content := matches[2]
+	matches := re.FindAllStringSubmatch(text, -1)
+
+	if len(matches) > 0 {
+		match := matches[0]
+		if len(match) < 3 { return "", "" }
+		lang := match[1]
+		content := match[2]
 		
 		// 1. 垃圾过滤
 		if strings.Contains(content, "PID") || strings.Contains(content, "REPOSITORY") || 

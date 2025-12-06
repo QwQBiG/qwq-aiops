@@ -15,6 +15,12 @@ import (
 const CommandTimeout = 60 * time.Second
 
 func ExecuteShell(c string) string {
+	if strings.HasPrefix(strings.TrimSpace(c), "kubectl") {
+		if !CheckK8sConnection() {
+			return "❌ Error: Kubernetes cluster is unreachable. Please check ~/.kube/config mount."
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), CommandTimeout)
 	defer cancel()
 
@@ -37,6 +43,14 @@ func ExecuteShell(c string) string {
 		res = res[:4000] + "\n...(Output truncated)"
 	}
 	return res
+}
+
+func CheckK8sConnection() bool {
+	cmd := exec.Command("kubectl", "cluster-info")
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return true
 }
 
 func IsCommandSafe(c string) bool {
