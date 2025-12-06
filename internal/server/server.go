@@ -296,12 +296,8 @@ func performPatrol() {
 			continue
 		}
 
-		// 过滤
-		if strings.Contains(line, "/dev/loop") || 
-		   strings.Contains(line, "/snap") || 
-		   strings.Contains(line, "tmpfs") || 
-		   strings.Contains(line, "overlay") || 
-		   strings.Contains(line, "cdrom") {
+		// 过滤掉 loop、snap、tmpfs、overlay 等
+		if isIgnoredDisk(line) {
 			continue
 		}
 
@@ -376,6 +372,14 @@ func performPatrol() {
 	} else {
 		logger.Info("✔ 系统健康")
 	}
+}
+
+func isIgnoredDisk(line string) bool {
+	return strings.Contains(line, "/dev/loop") || 
+		   strings.Contains(line, "/snap") || 
+		   strings.Contains(line, "tmpfs") || 
+		   strings.Contains(line, "overlay") || 
+		   strings.Contains(line, "cdrom")
 }
 
 func cleanAIAnalysis(analysis string) string {
