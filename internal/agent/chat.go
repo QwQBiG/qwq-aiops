@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"bufio"
+	"os"
 
 	openai "github.com/sashabaranov/go-openai"
 )
