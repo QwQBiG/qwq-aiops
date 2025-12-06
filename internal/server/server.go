@@ -8,17 +8,14 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"path/filepath"
 	"qwq/internal/agent"
 	"qwq/internal/config"
 	"qwq/internal/logger"
 	"qwq/internal/monitor"
 	"qwq/internal/utils"
-	"sort"
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
 	openai "github.com/sashabaranov/go-openai"
@@ -61,31 +58,6 @@ type DockerContainer struct {
 	State   string `json:"state"`
 }
 
-// --- 文件管理相关结构 ---
-const MountPoint = "/hostfs"
-
-var BlockList = []string{
-	"/proc",
-	"/sys",
-	"/dev",
-	"/boot",
-}
-
-type FileInfo struct {
-	Name    string `json:"name"`
-	Size    int64  `json:"size"`
-	Mode    string `json:"mode"`
-	ModTime string `json:"mod_time"`
-	IsDir   bool   `json:"is_dir"`
-	IsLink  bool   `json:"is_link"`
-}
-
-type FileResponse struct {
-	Code int         `json:"code"`
-	Msg  string      `json:"msg"`
-	Data interface{} `json:"data,omitempty"`
-}
-
 func Start(port string) {
 	var err error
 	logFile, err = os.OpenFile("qwq.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -114,7 +86,7 @@ func Start(port string) {
 	http.HandleFunc("/api/trigger", basicAuth(handleTrigger))
 	http.HandleFunc("/api/containers", basicAuth(handleContainers))
 	http.HandleFunc("/api/container/action", basicAuth(handleContainerAction))
-	
+
 	http.HandleFunc("/api/files/list", basicAuth(handleFileList))
 	http.HandleFunc("/api/files/content", basicAuth(handleFileContent))
 	http.HandleFunc("/api/files/save", basicAuth(handleFileSave))
@@ -130,6 +102,174 @@ func Start(port string) {
 	if err := http.ListenAndServe(port, nil); err != nil {
 		fmt.Printf("Web Server Error: %v\n", err)
 	}
+}
+
+func handleContainers(w http.ResponseWriter, r *http.Request) {
+	cmd := `docker ps -a --format "{{.ID}}|{{.Image}}|{{.Status}}|{{.Names}}"`
+	output := utils.ExecuteShell(cmd)
+	
+	var containers []DockerContainer
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	for _, line := range lines {
+		if line == "" { continue }
+		parts := strings.Split(line, "|")
+		if len(parts) >= 4 {
+			state := "exited"
+			if strings.Contains(parts[2], "Up") {
+				state = "running"
+			}
+			containers = append(containers, DockerContainer{
+				ID:     parts[0],
+				Image:  parts[1],
+				Status: parts[2],
+				Name:   parts[3],
+				State:  state,
+			})
+		}
+	}
+	json.NewEncoder(w).Encode(containers)
+}
+
+func handleContainerAction(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	action := r.URL.Query().Get("action")
+	if id == "" || action == "" { http.Error(w, "Missing params", 400); return }
+	if action != "start" && action != "stop" && action != "restart" { http.Error(w, "Invalid action", 400); return }
+	cmd := fmt.Sprintf("docker %s %s", action, id)
+	logger.Info("Web操作容器: %s", cmd)
+	utils.ExecuteShell(cmd)
+	w.Write([]byte("success"))
+}
+
+func collectStatsLoop() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		point := collectOnePoint()
+		statsCache.Lock()
+		statsCache.History = append(statsCache.History, point)
+		if len(statsCache.History) > 60 { statsCache.History = statsCache.History[1:] }
+		statsCache.Unlock()
+	}
+}
+
+func collectOnePoint() StatsPoint {
+	load := strings.TrimSpace(utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }'"))
+	memRaw := utils.ExecuteShell("free -m | awk 'NR==2{print $2,$3}'")
+	var memTotal, memUsed float64
+	fmt.Sscanf(memRaw, "%f %f", &memTotal, &memUsed)
+	memPct := 0.0
+	if memTotal > 0 { memPct = (memUsed / memTotal) * 100 }
+	
+	diskRaw := utils.ExecuteShell("df -h / | awk 'NR==2 {print $5,$4}'")
+	diskParts := strings.Fields(diskRaw)
+	diskPct := "0"
+	diskAvail := "0G"
+	if len(diskParts) >= 2 {
+		diskPct = strings.TrimSuffix(diskParts[0], "%")
+		diskAvail = diskParts[1]
+	}
+	tcpRaw := utils.ExecuteShell("ss -s | grep 'TCP:' | grep -oE 'estab [0-9]+' | awk '{print $2}'")
+	tcpConn := strings.TrimSpace(tcpRaw)
+	if tcpConn == "" { tcpConn = "0" }
+	httpStatus := monitor.RunChecks()
+	return StatsPoint{
+		Time:      time.Now().Format("15:04:05"),
+		Load:      load,
+		MemPct:    fmt.Sprintf("%.1f", memPct),
+		MemUsed:   fmt.Sprintf("%.0f", memUsed),
+		MemTotal:  fmt.Sprintf("%.0f", memTotal),
+		DiskPct:   diskPct,
+		DiskAvail: diskAvail,
+		TcpConn:   tcpConn,
+		Services:  httpStatus,
+	}
+}
+
+func basicAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userCfg := config.GlobalConfig.WebUser
+		passCfg := config.GlobalConfig.WebPassword
+		if userCfg == "" || passCfg == "" {
+			next(w, r)
+			return
+		}
+		user, pass, ok := r.BasicAuth()
+		if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(userCfg)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(passCfg)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func handleWSChat(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		logger.Info("WS Upgrade Error: %v", err)
+		return
+	}
+	defer conn.Close()
+	messages := agent.GetBaseMessages()
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil { break }
+		input := string(msg)
+		staticResp := agent.CheckStaticResponse(input)
+		if staticResp != "" {
+			conn.WriteJSON(map[string]string{"type": "answer", "content": staticResp})
+			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
+			continue
+		}
+		quickCmd := agent.GetQuickCommand(input)
+		if quickCmd != "" {
+			conn.WriteJSON(map[string]string{"type": "status", "content": "⚡ 快速执行: " + quickCmd})
+			output := utils.ExecuteShell(quickCmd)
+			if strings.TrimSpace(output) == "" { output = "(No output)" }
+			finalOutput := fmt.Sprintf("```\n%s\n```", output)
+			conn.WriteJSON(map[string]string{"type": "answer", "content": finalOutput})
+			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
+			continue
+		}
+		enhancedInput := input + " (Context: Current Linux Server)"
+		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
+		for i := 0; i < 5; i++ {
+			conn.WriteJSON(map[string]string{"type": "status", "content": "🤖 思考中..."})
+			respMsg, cont := agent.ProcessAgentStepForWeb(&messages, func(log string) {
+				conn.WriteJSON(map[string]string{"type": "log", "content": log})
+			})
+			if respMsg.Content != "" {
+				conn.WriteJSON(map[string]string{"type": "answer", "content": respMsg.Content})
+			}
+			if !cont { break }
+		}
+		conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
+	}
+}
+
+func handleLogs(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(logger.GetWebLogs())
+}
+
+func handleStats(w http.ResponseWriter, r *http.Request) {
+	statsCache.RLock()
+	defer statsCache.RUnlock()
+	if len(statsCache.History) == 0 {
+		json.NewEncoder(w).Encode([]StatsPoint{})
+		return
+	}
+	json.NewEncoder(w).Encode(statsCache.History)
+}
+
+func handleTrigger(w http.ResponseWriter, r *http.Request) {
+	if TriggerPatrolFunc != nil { go TriggerPatrolFunc() }
+	if TriggerStatusFunc != nil { go TriggerStatusFunc() }
+	w.Write([]byte("指令已发送：正在后台执行巡检和汇报..."))
+}
+
+func WebLog(msg string) {
+	logger.Info(msg)
 }
 
 func performPatrol() {
@@ -181,284 +321,3 @@ func performPatrol() {
 		logger.Info("✔ 系统健康")
 	}
 }
-
-func jsonResponse(w http.ResponseWriter, code int, msg string, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(FileResponse{
-		Code: code,
-		Msg:  msg,
-		Data: data,
-	})
-}
-
-func resolveSafePath(userPath string) (string, error) {
-	cleanPath := filepath.Clean(userPath)
-	for _, blocked := range BlockList {
-		if strings.HasPrefix(cleanPath, blocked) {
-			return "", fmt.Errorf("access denied: path '%s' is in blocklist", cleanPath)
-		}
-	}
-	realPath := filepath.Join(MountPoint, cleanPath)
-	if !strings.HasPrefix(realPath, MountPoint) {
-		return "", fmt.Errorf("access denied: path escape detected")
-	}
-	return realPath, nil
-}
-
-func handleFileList(w http.ResponseWriter, r *http.Request) {
-	userPath := r.URL.Query().Get("path")
-	if userPath == "" { userPath = "/" }
-
-	realPath, err := resolveSafePath(userPath)
-	if err != nil {
-		logger.Info("[AUDIT] 🚨 非法访问尝试: %s | Error: %v", userPath, err)
-		jsonResponse(w, 403, err.Error(), nil)
-		return
-	}
-
-	entries, err := os.ReadDir(realPath)
-	if err != nil {
-		logger.Info("读取目录失败: %s | Error: %v", realPath, err)
-		jsonResponse(w, 500, fmt.Sprintf("无法读取目录: %v", err), nil)
-		return
-	}
-
-	files := make([]FileInfo, 0)
-	for _, entry := range entries {
-		info, err := entry.Info()
-		if err != nil { continue }
-		files = append(files, FileInfo{
-			Name:    entry.Name(),
-			Size:    info.Size(),
-			Mode:    info.Mode().String(),
-			ModTime: info.ModTime().Format("2006-01-02 15:04:05"),
-			IsDir:   entry.IsDir(),
-			IsLink:  info.Mode()&os.ModeSymlink != 0,
-		})
-	}
-
-	sort.Slice(files, func(i, j int) bool {
-		if files[i].IsDir != files[j].IsDir {
-			return files[i].IsDir
-		}
-		return files[i].Name < files[j].Name
-	})
-
-	jsonResponse(w, 200, "success", map[string]interface{}{
-		"path":  userPath,
-		"files": files,
-	})
-}
-
-func handleFileContent(w http.ResponseWriter, r *http.Request) {
-	userPath := r.URL.Query().Get("path")
-	realPath, err := resolveSafePath(userPath)
-	if err != nil {
-		jsonResponse(w, 403, err.Error(), nil)
-		return
-	}
-
-	info, err := os.Stat(realPath)
-	if err != nil {
-		jsonResponse(w, 404, "文件不存在", nil)
-		return
-	}
-	if info.Size() > 2*1024*1024 {
-		jsonResponse(w, 400, "文件过大 (>2MB)，不支持在线编辑", nil)
-		return
-	}
-
-	content, err := os.ReadFile(realPath)
-	if err != nil {
-		jsonResponse(w, 500, "读取失败", nil)
-		return
-	}
-
-	if !utf8.Valid(content) {
-		jsonResponse(w, 400, "检测到二进制文件，不支持编辑", nil)
-		return
-	}
-
-	w.Write(content)
-}
-
-func handleFileSave(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		jsonResponse(w, 405, "Method not allowed", nil)
-		return
-	}
-	var req struct {
-		Path    string `json:"path"`
-		Content string `json:"content"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonResponse(w, 400, "Invalid JSON", nil)
-		return
-	}
-	realPath, err := resolveSafePath(req.Path)
-	if err != nil {
-		logger.Info("[AUDIT] 🚨 非法写入尝试: %s", req.Path)
-		jsonResponse(w, 403, err.Error(), nil)
-		return
-	}
-	if err := atomicWriteFile(realPath, []byte(req.Content), 0644); err != nil {
-		logger.Info("[AUDIT] ❌ 文件保存失败: %s | Error: %v", req.Path, err)
-		jsonResponse(w, 500, fmt.Sprintf("保存失败: %v", err), nil)
-		return
-	}
-	logger.Info("[AUDIT] 📝 文件已修改: %s (Size: %d bytes)", req.Path, len(req.Content))
-	jsonResponse(w, 200, "success", nil)
-}
-
-func handleFileAction(w http.ResponseWriter, r *http.Request) {
-	action := r.URL.Query().Get("type")
-	userPath := r.URL.Query().Get("path")
-	realPath, err := resolveSafePath(userPath)
-	if err != nil {
-		jsonResponse(w, 403, err.Error(), nil)
-		return
-	}
-	var errOp error
-	switch action {
-	case "delete":
-		if userPath == "/" || realPath == MountPoint {
-			jsonResponse(w, 403, "禁止删除根目录", nil)
-			return
-		}
-		errOp = os.RemoveAll(realPath)
-		if errOp == nil { logger.Info("[AUDIT] 🗑️ 文件/目录已删除: %s", userPath) }
-	case "mkdir":
-		errOp = os.MkdirAll(realPath, 0755)
-		if errOp == nil { logger.Info("[AUDIT] 📂 目录已创建: %s", userPath) }
-	default:
-		jsonResponse(w, 400, "Unknown action", nil)
-		return
-	}
-	if errOp != nil {
-		jsonResponse(w, 500, fmt.Sprintf("操作失败: %v", errOp), nil)
-		return
-	}
-	jsonResponse(w, 200, "success", nil)
-}
-
-func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
-	dir := filepath.Dir(filename)
-	tmpFile, err := os.CreateTemp(dir, "qwq_tmp_*")
-	if err != nil { return err }
-	tmpName := tmpFile.Name()
-	defer os.Remove(tmpName)
-	if _, err := tmpFile.Write(data); err != nil { tmpFile.Close(); return err }
-	if err := tmpFile.Sync(); err != nil { tmpFile.Close(); return err }
-	if err := tmpFile.Close(); err != nil { return err }
-	return os.Rename(tmpName, filename)
-}
-
-// --- 其他 Handlers ---
-
-func handleContainers(w http.ResponseWriter, r *http.Request) {
-	cmd := `docker ps -a --format "{{.ID}}|{{.Image}}|{{.Status}}|{{.Names}}"`
-	output := utils.ExecuteShell(cmd)
-	var containers []DockerContainer
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	for _, line := range lines {
-		if line == "" { continue }
-		parts := strings.Split(line, "|")
-		if len(parts) >= 4 {
-			state := "exited"
-			if strings.Contains(parts[2], "Up") { state = "running" }
-			containers = append(containers, DockerContainer{
-				ID: parts[0], Image: parts[1], Status: parts[2], Name: parts[3], State: state,
-			})
-		}
-	}
-	json.NewEncoder(w).Encode(containers)
-}
-
-func handleContainerAction(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
-	action := r.URL.Query().Get("action")
-	if id == "" || action == "" { http.Error(w, "Missing params", 400); return }
-	if action != "start" && action != "stop" && action != "restart" { http.Error(w, "Invalid action", 400); return }
-	cmd := fmt.Sprintf("docker %s %s", action, id)
-	logger.Info("Web操作容器: %s", cmd)
-	utils.ExecuteShell(cmd)
-	w.Write([]byte("success"))
-}
-
-func handleLogs(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(logger.GetWebLogs())
-}
-
-func handleStats(w http.ResponseWriter, r *http.Request) {
-	statsCache.RLock()
-	defer statsCache.RUnlock()
-	if len(statsCache.History) == 0 {
-		json.NewEncoder(w).Encode([]StatsPoint{})
-		return
-	}
-	json.NewEncoder(w).Encode(statsCache.History)
-}
-
-func handleTrigger(w http.ResponseWriter, r *http.Request) {
-	if TriggerPatrolFunc != nil { go TriggerPatrolFunc() }
-	if TriggerStatusFunc != nil { go TriggerStatusFunc() }
-	w.Write([]byte("指令已发送：正在后台执行巡检和汇报..."))
-}
-
-func handleWSChat(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil { logger.Info("WS Upgrade Error: %v", err); return }
-	defer conn.Close()
-	messages := agent.GetBaseMessages()
-	for {
-		_, msg, err := conn.ReadMessage()
-		if err != nil { break }
-		input := string(msg)
-		staticResp := agent.CheckStaticResponse(input)
-		if staticResp != "" {
-			conn.WriteJSON(map[string]string{"type": "answer", "content": staticResp})
-			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
-			continue
-		}
-		quickCmd := agent.GetQuickCommand(input)
-		if quickCmd != "" {
-			conn.WriteJSON(map[string]string{"type": "status", "content": "⚡ 快速执行: " + quickCmd})
-			output := utils.ExecuteShell(quickCmd)
-			if strings.TrimSpace(output) == "" { output = "(No output)" }
-			finalOutput := fmt.Sprintf("```\n%s\n```", output)
-			conn.WriteJSON(map[string]string{"type": "answer", "content": finalOutput})
-			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
-			continue
-		}
-		enhancedInput := input + " (Context: Current Linux Server)"
-		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
-		for i := 0; i < 5; i++ {
-			conn.WriteJSON(map[string]string{"type": "status", "content": "🤖 思考中..."})
-			respMsg, cont := agent.ProcessAgentStepForWeb(&messages, func(log string) {
-				conn.WriteJSON(map[string]string{"type": "log", "content": log})
-			})
-			if respMsg.Content != "" {
-				conn.WriteJSON(map[string]string{"type": "answer", "content": respMsg.Content})
-			}
-			if !cont { break }
-		}
-		conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
-	}
-}
-
-func basicAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		userCfg := config.GlobalConfig.WebUser
-		passCfg := config.GlobalConfig.WebPassword
-		if userCfg == "" || passCfg == "" { next(w, r); return }
-		user, pass, ok := r.BasicAuth()
-		if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(userCfg)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(passCfg)) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next(w, r)
-	}
-}
-
-func WebLog(msg string) { logger.Info(msg) }
