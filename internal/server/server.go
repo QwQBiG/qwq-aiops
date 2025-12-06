@@ -99,7 +99,13 @@ func Start(port string) {
 	// 容器管理 API
 	http.HandleFunc("/api/containers", basicAuth(handleContainers))
 	http.HandleFunc("/api/container/action", basicAuth(handleContainerAction))
-	
+
+	// 文件管理 API
+	http.HandleFunc("/api/files/list", basicAuth(handleFileList))
+	http.HandleFunc("/api/files/content", basicAuth(handleFileContent))
+	http.HandleFunc("/api/files/save", basicAuth(handleFileSave))
+	http.HandleFunc("/api/files/action", basicAuth(handleFileAction))
+
 	// WebSocket 聊天路由
 	http.HandleFunc("/ws/chat", basicAuth(handleWSChat))
 

@@ -27,6 +27,10 @@
             <el-icon><ChatLineSquare /></el-icon>
             <span>AI 终端</span>
           </el-menu-item>
+          <el-menu-item index="files">
+            <el-icon><Folder /></el-icon>
+            <span>文件</span>
+          </el-menu-item>
           <el-menu-item index="logs">
             <el-icon><Document /></el-icon>
             <span>日志</span>
@@ -64,6 +68,7 @@ import Logs from './components/Logs.vue'
 import Containers from './components/Containers.vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import Files from './components/Files.vue'
 
 const activeMenu = ref('dashboard')
 const patrolLoading = ref(false)
@@ -72,6 +77,7 @@ const components = {
   dashboard: Dashboard,
   terminal: Terminal,
   logs: Logs,
+  files: Files, 
   containers: Containers
 }
 
@@ -79,6 +85,7 @@ const titles = {
   dashboard: '系统概览',
   terminal: '智能运维终端',
   logs: '系统运行日志',
+  files: '文件管理',
   containers: '容器管理'
 }
 
