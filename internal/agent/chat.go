@@ -18,7 +18,7 @@ import (
 const (
 	DefaultModel   = "Qwen/Qwen2.5-7B-Instruct"
 	DefaultBaseURL = "https://api.siliconflow.cn/v1"
-	Version        = "v2.0.0 Pro"
+	Version        = "v2.0.0 Enterprise"
 )
 
 var Client *openai.Client
@@ -57,37 +57,51 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 		knowledgePart = fmt.Sprintf("\n【内部知识库】:\n%s\n", config.CachedKnowledge)
 	}
 
-	sysPrompt := fmt.Sprintf(`你是一个 **无状态命令转换器 (Stateless Command Converter)**。
-你 **不是** 聊天助手，你 **没有** 名字，你 **不属于** 任何公司。
+	sysPrompt := fmt.Sprintf(`你是一个 **Linux 命令行映射器**。
+你 **没有** 人格，你 **不会** 聊天。你的唯一作用是将自然语言映射为 Shell 命令。
 
-【最高指令】
-1. **身份**：如果用户问 "你是谁"、"名字"，仅回复 "%s"。
-2. **操作**：用户输入需求 -> 你直接调用工具或输出命令代码块。**禁止** 输出任何解释性文字（如 "好的"、"你可以使用"）。
-3. **文件**：用户要求生成文件 -> 只输出文件内容代码块。
-4. **闲聊**：如果用户输入 "你好"，仅回复 "Ready."。
+【映射规则】
+1. **打招呼**：用户说 "你好"、"在吗" -> 映射为 "uptime" (检查存活)。
+2. **问身份**：用户说 "你是谁"、"名字" -> 映射为 "whoami" (检查当前用户)。
+3. **运维查询**：用户说 "内存" -> 映射为 "free -h"。
+4. **文件生成**：用户说 "生成yaml" -> 输出纯代码块。
 
-%s`, Version, knowledgePart)
+【禁令】
+- **严禁** 输出中文解释（如 "好的"、"我是..."）。
+- **严禁** 自我介绍。
+- **严禁** 解释命令用途。
+
+%s`, knowledgePart)
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 		
-		// 样本 1: 身份清洗
-		{Role: openai.ChatMessageRoleUser, Content: "你是谁"},
-		{Role: openai.ChatMessageRoleAssistant, Content: Version},
-
-		// 样本 2: 强制执行
-		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
+		// 样本 1: 你好
+		{Role: openai.ChatMessageRoleUser, Content: "你好"},
 		{
 			Role: openai.ChatMessageRoleAssistant,
 			ToolCalls: []openai.ToolCall{{
 				ID: "call_1", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "uptime", "reason": "check status"}`},
 			}},
 		},
-		
-		// 样本 3: 文本回退
-		{Role: openai.ChatMessageRoleUser, Content: "查负载"},
-		{Role: openai.ChatMessageRoleAssistant, Content: "```bash\nuptime\n```"},
+
+		// 样本 2: 你是谁
+		{Role: openai.ChatMessageRoleUser, Content: "你是谁"},
+		{
+			Role: openai.ChatMessageRoleAssistant,
+			ToolCalls: []openai.ToolCall{{
+				ID: "call_2", Type: openai.ToolTypeFunction,
+				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "whoami", "reason": "check user"}`},
+			}},
+		},
+
+		// 样本 3: 文件生成
+		{Role: openai.ChatMessageRoleUser, Content: "写一个 hello.py"},
+		{
+			Role: openai.ChatMessageRoleAssistant,
+			Content: "```python\nprint('Hello World')\n```",
+		},
 	}
 }
 
@@ -111,7 +125,7 @@ func AnalyzeWithAI(issue string) string {
 
 func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompletionMessage, bool) {
 	return ProcessAgentStepForWeb(msgs, func(log string) {
-		// CLI 模式下不打印中间日志
+		// CLI 模式静默
 	}, true)
 }
 
@@ -134,6 +148,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	msg := resp.Choices[0].Message
 	*msgs = append(*msgs, msg)
 
+	// 1. 处理 Tool Calls
 	if len(msg.ToolCalls) > 0 {
 		for _, toolCall := range msg.ToolCalls {
 			handleToolCall(toolCall, msgs, logCallback)
@@ -141,6 +156,27 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		return msg, true
 	}
 
+	// 2. CLI 模式
+	if len(isCLI) > 0 && isCLI[0] {
+		filename, content := extractCodeBlock(msg.Content)
+		if filename != "" && content != "" {
+			fmt.Printf("\n\033[36m💾 检测到配置文件，是否保存为 '%s'? (y/N): \033[0m", filename)
+			reader := bufio.NewReader(os.Stdin)
+			input, _ := reader.ReadString('\n')
+			input = strings.TrimSpace(strings.ToLower(input))
+			if input == "y" || input == "yes" {
+				err := os.WriteFile(filename, []byte(content), 0644)
+				if err == nil {
+					fmt.Printf("\033[32m✔ 文件已保存: %s\033[0m\n", filename)
+				} else {
+					fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
+				}
+			}
+			return msg, true
+		}
+	}
+
+	// 3. 文本回退机制
 	cmd := extractCommandFromText(msg.Content)
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {
@@ -162,6 +198,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	return msg, true
 }
 
+// CLI 后处理
 func CheckAndSaveFile(content string) {
 	filename, fileContent := extractCodeBlock(content)
 	if filename != "" && fileContent != "" {
