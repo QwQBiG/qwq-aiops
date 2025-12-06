@@ -3,19 +3,19 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"qwq/internal/logger"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
-// 容器内的挂载点
 const MountPoint = "/hostfs"
 
-// 黑名单目录 (禁止访问或修改)
 var BlockList = []string{
 	"/proc",
 	"/sys",
@@ -32,7 +32,6 @@ type FileInfo struct {
 	IsLink  bool   `json:"is_link"`
 }
 
-// 通用响应结构
 type FileResponse struct {
 	Code int         `json:"code"`
 	Msg  string      `json:"msg"`
@@ -48,32 +47,19 @@ func jsonResponse(w http.ResponseWriter, code int, msg string, data interface{})
 	})
 }
 
-// --- 安全逻辑 ---
-
 func resolveSafePath(userPath string) (string, error) {
-	// 1. 清洗路径，处理 ../ 和多余的 /
 	cleanPath := filepath.Clean(userPath)
-	
-	// 2. 检查黑名单
 	for _, blocked := range BlockList {
 		if strings.HasPrefix(cleanPath, blocked) {
 			return "", fmt.Errorf("access denied: path '%s' is in blocklist", cleanPath)
 		}
 	}
-
-	// 3. 拼接挂载点
-	// 如果 userPath 是 "/etc/nginx"，实际路径是 "/hostfs/etc/nginx"
 	realPath := filepath.Join(MountPoint, cleanPath)
-
-	// 4. 二次检查：确保最终路径依然在 MountPoint 内 (防止通过软链接逃逸)
 	if !strings.HasPrefix(realPath, MountPoint) {
 		return "", fmt.Errorf("access denied: path escape detected")
 	}
-
 	return realPath, nil
 }
-
-// --- API Handlers ---
 
 func handleFileList(w http.ResponseWriter, r *http.Request) {
 	userPath := r.URL.Query().Get("path")
@@ -88,11 +74,13 @@ func handleFileList(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := os.ReadDir(realPath)
 	if err != nil {
+		logger.Info("读取目录失败: %s | Error: %v", realPath, err)
 		jsonResponse(w, 500, fmt.Sprintf("无法读取目录: %v", err), nil)
 		return
 	}
 
-	var files []FileInfo
+	files := make([]FileInfo, 0)
+	
 	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil { continue }
@@ -107,7 +95,6 @@ func handleFileList(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// 排序：文件夹优先，然后按名称
 	sort.Slice(files, func(i, j int) bool {
 		if files[i].IsDir != files[j].IsDir {
 			return files[i].IsDir
@@ -129,7 +116,6 @@ func handleFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 检查文件大小 (限制 2MB，防止浏览器崩溃)
 	info, err := os.Stat(realPath)
 	if err != nil {
 		jsonResponse(w, 404, "文件不存在", nil)
@@ -146,13 +132,11 @@ func handleFileContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 检查是否为二进制文件 (通过检测 UTF-8 有效性)
 	if !utf8.Valid(content) {
 		jsonResponse(w, 400, "检测到二进制文件，不支持编辑", nil)
 		return
 	}
 
-	// 直接返回内容文本
 	w.Write(content)
 }
 
@@ -200,7 +184,6 @@ func handleFileAction(w http.ResponseWriter, r *http.Request) {
 
 	switch action {
 	case "delete":
-		// 再次检查是否为根目录保护
 		if userPath == "/" || realPath == MountPoint {
 			jsonResponse(w, 403, "禁止删除根目录", nil)
 			return
@@ -226,24 +209,19 @@ func handleFileAction(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, "success", nil)
 }
 
-// --- 辅助函数：原子写入 ---
 func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(filename)
-
 	tmpFile, err := os.CreateTemp(dir, "qwq_tmp_*")
 	if err != nil {
 		return err
 	}
 	tmpName := tmpFile.Name()
-
 	defer os.Remove(tmpName)
-
 
 	if _, err := tmpFile.Write(data); err != nil {
 		tmpFile.Close()
 		return err
 	}
-
 	if err := tmpFile.Sync(); err != nil {
 		tmpFile.Close()
 		return err
@@ -251,6 +229,5 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 	if err := tmpFile.Close(); err != nil {
 		return err
 	}
-
 	return os.Rename(tmpName, filename)
 }

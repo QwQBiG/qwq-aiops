@@ -19,7 +19,7 @@
 
     <!-- 文件列表 -->
     <el-card class="list-card" shadow="never" v-loading="loading">
-      <el-table :data="files" style="width: 100%" @row-click="handleRowClick">
+      <el-table :data="files" style="width: 100%" @row-click="handleRowClick" empty-text="暂无文件或无权限访问">
         <el-table-column width="50">
           <template #default="scope">
             <el-icon v-if="scope.row.is_dir" class="icon-dir"><Folder /></el-icon>
@@ -105,8 +105,12 @@ const loadFiles = async (path) => {
   loading.value = true
   try {
     const res = await axios.get(`/api/files/list?path=${encodeURIComponent(path)}`)
-    files.value = res.data.files || []
-    currentPath.value = res.data.path
+    if (res.data.code === 200) {
+      files.value = res.data.data.files || []
+      currentPath.value = res.data.data.path
+    } else {
+      ElMessage.error(res.data.msg)
+    }
   } catch (e) {
     ElMessage.error('加载失败: ' + e.message)
   } finally {
