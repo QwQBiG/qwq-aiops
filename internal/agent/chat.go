@@ -75,7 +75,7 @@ func CheckStaticResponse(input string) string {
 		return `**可用指令示例：**
 - 🔍 **查询**：看看内存、查负载、看Docker容器、看K8s Pod
 - ⚙️ **操作**：重启 nginx (需确认)、清理磁盘
-- 📄 **生成**：写一个 busybox yaml、生成 python hello world
+- 📄 **生成**：写一个 busybox yaml、生成 go语言代码
 - 📊 **报表**：生成系统状态日报`
 	}
 
@@ -99,6 +99,9 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
    - **必须**使用 Markdown 代码块包裹 (e.g., `+"```yaml ... ```"+`)。
    - **严禁**输出任何解释文字（如 "好的"、"这是文件"）。
    - **严禁**输出 echo 命令。
+3. **代码内容**：
+   - 只有用户明确和代码相关的内容才可以生成代码！
+   - 如果用户只说写代码但是没有说是什么语言，你要再去询问！
 
 %s`, knowledgePart)
 
