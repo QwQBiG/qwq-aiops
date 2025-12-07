@@ -45,7 +45,7 @@
 
 ## 快速开始
 
-### 方式一：使用部署脚本（推荐）
+### 方式一：使用部署脚本
 
 ```bash
 # 1. 克隆项目
@@ -66,7 +66,7 @@ chmod +x deploy.sh
 # 默认账号: admin / admin123
 ```
 
-### 方式二：使用 Docker Compose
+### 方式二：使用 Docker Compose（推荐）
 
 ```bash
 # 1. 克隆项目
@@ -88,6 +88,9 @@ docker-compose logs -f
 # 6. 访问系统
 # 前端界面: http://localhost:8080
 # API 文档: http://localhost:8080/api/docs
+
+# 注意：如果 8080 端口被占用，可以修改 docker-compose.yml 中的端口映射
+# 例如改为 "8081:8080"，然后访问 http://localhost:8081
 ```
 
 ### 方式三：手动 Docker 部署
@@ -683,6 +686,56 @@ docker logs qwq | grep frontend
 
 # 检查端口占用
 netstat -tlnp | grep 8080
+```
+
+**端口冲突解决方案**：
+
+如果 8080 端口被占用，有以下几种解决方案：
+
+**方案 1：修改 docker-compose.yml 端口映射**
+
+```yaml
+services:
+  qwq:
+    ports:
+      - "8081:8080"  # 将宿主机端口改为 8081
+```
+
+然后重启服务：
+
+```bash
+docker-compose down
+docker-compose up -d
+# 访问 http://localhost:8081
+```
+
+**方案 2：停止占用 8080 端口的进程**
+
+```bash
+# Windows 系统
+netstat -ano | findstr :8080
+taskkill /PID <进程ID> /F
+
+# Linux/macOS 系统
+lsof -i :8080
+kill -9 <进程ID>
+```
+
+**方案 3：使用环境变量修改端口**
+
+在 `.env` 文件中添加：
+
+```bash
+FRONTEND_PORT=8081
+```
+
+然后在 docker-compose.yml 中使用：
+
+```yaml
+services:
+  qwq:
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
 ```
 
 #### 6. 容器管理功能异常
