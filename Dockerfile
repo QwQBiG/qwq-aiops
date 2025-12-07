@@ -11,6 +11,12 @@ LABEL maintainer="qwq AIOps Team"
 
 WORKDIR /app/frontend
 
+# 使用国内 Alpine 镜像源加速
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
+# 设置 npm 国内镜像源
+RUN npm config set registry https://registry.npmmirror.com
+
 # 复制前端依赖配置和锁文件
 COPY frontend/package*.json ./
 
@@ -34,12 +40,16 @@ LABEL maintainer="qwq AIOps Team"
 
 WORKDIR /app
 
+# 使用国内 Alpine 镜像源加速
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
 # 安装构建依赖
 RUN apk add --no-cache git ca-certificates
 
 # 设置 Go 代理（使用国内镜像加速）
 ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
 ENV GO111MODULE=on
+ENV CGO_ENABLED=0
 
 # 复制 Go 模块文件
 COPY go.mod go.sum ./
@@ -54,8 +64,10 @@ COPY internal/ ./internal/
 # 从前端构建阶段复制编译好的文件
 COPY --from=frontend-builder /app/frontend/dist ./internal/server/dist
 
-# 编译 Go 程序（优化编译参数）
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+# 编译 Go 程序（优化编译参数，自动适配架构）
+# 使用 TARGETPLATFORM 自动适配目标架构，避免交叉编译慢的问题
+ARG TARGETARCH
+RUN GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags="-w -s -X main.Version=1.0.0 -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o qwq \
     ./cmd/qwq/main.go
@@ -74,6 +86,9 @@ LABEL maintainer="qwq AIOps Team" \
       org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
+
+# 使用国内 Alpine 镜像源加速
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 # 安装运行时依赖和运维工具
 RUN apk add --no-cache \
@@ -94,11 +109,13 @@ RUN apk add --no-cache \
     docker-cli \
     && rm -rf /var/cache/apk/*
 
-# 安装 kubectl
+# 安装 kubectl（自动适配架构）
 ARG INSTALL_KUBECTL=true
+ARG TARGETARCH
 RUN if [ "$INSTALL_KUBECTL" = "true" ]; then \
     KUBECTL_VERSION=$(wget -qO- https://dl.k8s.io/release/stable.txt) && \
-    wget -q "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -O /usr/local/bin/kubectl && \
+    ARCH=${TARGETARCH:-amd64} && \
+    wget -q "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" -O /usr/local/bin/kubectl && \
     chmod +x /usr/local/bin/kubectl; \
     fi
 
