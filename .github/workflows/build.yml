@@ -1,13 +1,14 @@
-name: Build QWQ Agent
+name: Build and Test
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
   pull_request:
     branches: [ "main" ]
 
 jobs:
-  build:
+  test:
+    name: Run Tests
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -17,15 +18,59 @@ jobs:
       with:
         go-version: '1.23'
 
-    - name: Build for Linux
-      run: GOOS=linux GOARCH=amd64 go build -v -o qwq-linux-amd64 ./cmd/qwq/main.go
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
 
-    - name: Build for Windows
-      run: GOOS=windows GOARCH=amd64 go build -v -o qwq-windows-amd64.exe ./cmd/qwq/main.go
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run tests
+      run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.txt
+        flags: unittests
+        name: codecov-umbrella
+
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+
+    - name: Build
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+      run: |
+        OUTPUT_NAME=qwq-${{ matrix.goos }}-${{ matrix.goarch }}
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          OUTPUT_NAME="${OUTPUT_NAME}.exe"
+        fi
+        go build -v -ldflags="-w -s" -o ${OUTPUT_NAME} ./cmd/qwq/main.go
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: qwq-binaries
-        path: |
-          qwq-linux-amd64
+        name: qwq-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: qwq-*
