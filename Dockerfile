@@ -11,7 +11,7 @@ LABEL maintainer="qwq AIOps Team"
 
 WORKDIR /app/frontend
 
-# 复制前端依赖配置
+# 复制前端依赖配置和锁文件
 COPY frontend/package*.json ./
 
 # 安装依赖（使用 npm ci 更快更可靠）
