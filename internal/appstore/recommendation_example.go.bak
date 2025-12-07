@@ -1,0 +1,241 @@
+package appstore
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"gorm.io/gorm"
+)
+
+// ExampleRecommendationUsage 演示推荐系统的使用
+func ExampleRecommendationUsage(db *gorm.DB) {
+	ctx := context.Background()
+	
+	// 创建应用商店服务
+	appStoreService := NewAppStoreService(db)
+	
+	// 示例1: 记录用户行为
+	fmt.Println("=== 示例1: 记录用户行为 ===")
+	
+	// 用户查看了一个应用
+	viewBehavior := &UserBehavior{
+		UserID:     1,
+		TenantID:   1,
+		Type:       BehaviorView,
+		TemplateID: 1,
+		CreatedAt:  time.Now(),
+	}
+	if err := appStoreService.RecordUserBehavior(ctx, viewBehavior); err != nil {
+		log.Printf("记录查看行为失败: %v", err)
+	} else {
+		fmt.Println("✓ 成功记录用户查看行为")
+	}
+	
+	// 用户安装了一个应用
+	installBehavior := &UserBehavior{
+		UserID:     1,
+		TenantID:   1,
+		Type:       BehaviorInstall,
+		TemplateID: 1,
+		CreatedAt:  time.Now(),
+	}
+	if err := appStoreService.RecordUserBehavior(ctx, installBehavior); err != nil {
+		log.Printf("记录安装行为失败: %v", err)
+	} else {
+		fmt.Println("✓ 成功记录用户安装行为")
+	}
+	
+	// 用户搜索应用
+	searchBehavior := &UserBehavior{
+		UserID:     1,
+		TenantID:   1,
+		Type:       BehaviorSearch,
+		TemplateID: 0, // 搜索行为不关联特定模板
+		Metadata:   `{"query": "nginx"}`,
+		CreatedAt:  time.Now(),
+	}
+	if err := appStoreService.RecordUserBehavior(ctx, searchBehavior); err != nil {
+		log.Printf("记录搜索行为失败: %v", err)
+	} else {
+		fmt.Println("✓ 成功记录用户搜索行为")
+	}
+	
+	// 示例2: 记录用户反馈
+	fmt.Println("\n=== 示例2: 记录用户反馈 ===")
+	
+	feedback := &UserFeedback{
+		UserID:     1,
+		TemplateID: 1,
+		Rating:     5,
+		Comment:    "非常好用的应用，部署简单，性能优秀！",
+		CreatedAt:  time.Now(),
+	}
+	if err := appStoreService.RecordUserFeedback(ctx, feedback); err != nil {
+		log.Printf("记录反馈失败: %v", err)
+	} else {
+		fmt.Println("✓ 成功记录用户反馈")
+	}
+	
+	// 示例3: 获取个性化推荐
+	fmt.Println("\n=== 示例3: 获取个性化推荐 ===")
+	
+	userContext := &UserContext{
+		UserID:           1,
+		TenantID:         1,
+		InstalledApps:    []uint{1, 2}, // 已安装的应用ID
+		RecentSearches:   []string{"nginx", "database"},
+		PreferredCategory: CategoryWebServer,
+		CustomTags:       []string{"high-performance", "easy-to-use"},
+	}
+	
+	recommendations, err := appStoreService.GetRecommendations(ctx, userContext, 5)
+	if err != nil {
+		log.Printf("获取推荐失败: %v", err)
+		return
+	}
+	
+	fmt.Printf("为用户 %d 推荐了 %d 个应用:\n", userContext.UserID, len(recommendations))
+	for i, rec := range recommendations {
+		fmt.Printf("\n%d. %s (分数: %.2f, 置信度: %.2f)\n",
+			i+1,
+			rec.Template.DisplayName,
+			rec.Score,
+			rec.Confidence,
+		)
+		fmt.Printf("   分类: %s\n", rec.Template.Category)
+		fmt.Printf("   推荐理由: %s\n", rec.Reason)
+		if rec.Template.Tags != "" {
+			fmt.Printf("   标签: %s\n", rec.Template.Tags)
+		}
+	}
+	
+	// 示例4: 模拟用户交互流程
+	fmt.Println("\n=== 示例4: 完整用户交互流程 ===")
+	
+	// 1. 用户浏览应用商店
+	fmt.Println("1. 用户浏览应用商店...")
+	templates, err := appStoreService.ListTemplates(ctx, "", TemplateStatusPublished)
+	if err != nil {
+		log.Printf("获取模板列表失败: %v", err)
+		return
+	}
+	fmt.Printf("   找到 %d 个可用应用\n", len(templates))
+	
+	// 2. 用户查看某个应用详情
+	if len(templates) > 0 {
+		fmt.Println("\n2. 用户查看应用详情...")
+		template := templates[0]
+		viewBehavior := &UserBehavior{
+			UserID:     2,
+			TenantID:   1,
+			Type:       BehaviorView,
+			TemplateID: template.ID,
+			CreatedAt:  time.Now(),
+		}
+		appStoreService.RecordUserBehavior(ctx, viewBehavior)
+		fmt.Printf("   查看了应用: %s\n", template.DisplayName)
+	}
+	
+	// 3. 用户安装应用
+	fmt.Println("\n3. 用户安装应用...")
+	if len(templates) > 0 {
+		template := templates[0]
+		installBehavior := &UserBehavior{
+			UserID:     2,
+			TenantID:   1,
+			Type:       BehaviorInstall,
+			TemplateID: template.ID,
+			CreatedAt:  time.Now(),
+		}
+		appStoreService.RecordUserBehavior(ctx, installBehavior)
+		fmt.Printf("   安装了应用: %s\n", template.DisplayName)
+	}
+	
+	// 4. 用户给出反馈
+	fmt.Println("\n4. 用户给出反馈...")
+	if len(templates) > 0 {
+		template := templates[0]
+		feedback := &UserFeedback{
+			UserID:     2,
+			TemplateID: template.ID,
+			Rating:     4,
+			Comment:    "很好用，推荐！",
+			CreatedAt:  time.Now(),
+		}
+		appStoreService.RecordUserFeedback(ctx, feedback)
+		fmt.Println("   提交了评分和评论")
+	}
+	
+	// 5. 系统为用户生成新的推荐
+	fmt.Println("\n5. 系统生成个性化推荐...")
+	newUserContext := &UserContext{
+		UserID:   2,
+		TenantID: 1,
+	}
+	if len(templates) > 0 {
+		newUserContext.InstalledApps = []uint{templates[0].ID}
+	}
+	
+	newRecommendations, err := appStoreService.GetRecommendations(ctx, newUserContext, 3)
+	if err != nil {
+		log.Printf("获取推荐失败: %v", err)
+		return
+	}
+	
+	fmt.Printf("   为用户推荐了 %d 个新应用:\n", len(newRecommendations))
+	for i, rec := range newRecommendations {
+		fmt.Printf("   %d. %s (分数: %.2f)\n", i+1, rec.Template.DisplayName, rec.Score)
+	}
+}
+
+// DemoRecommendationScenarios 演示不同的推荐场景
+func DemoRecommendationScenarios(db *gorm.DB) {
+	ctx := context.Background()
+	appStoreService := NewAppStoreService(db)
+	
+	fmt.Println("=== 推荐系统场景演示 ===")
+	
+	// 场景1: 新用户（无历史数据）
+	fmt.Println("场景1: 新用户推荐")
+	newUserContext := &UserContext{
+		UserID:   100,
+		TenantID: 1,
+	}
+	recommendations, _ := appStoreService.GetRecommendations(ctx, newUserContext, 3)
+	fmt.Printf("新用户获得 %d 个推荐（基于热门度和评分）\n", len(recommendations))
+	
+	// 场景2: 有明确偏好的用户
+	fmt.Println("场景2: 有明确偏好的用户")
+	preferredUserContext := &UserContext{
+		UserID:            101,
+		TenantID:          1,
+		PreferredCategory: CategoryDatabase,
+		CustomTags:        []string{"mysql", "postgresql"},
+	}
+	recommendations, _ = appStoreService.GetRecommendations(ctx, preferredUserContext, 3)
+	fmt.Printf("偏好数据库类应用的用户获得 %d 个相关推荐\n", len(recommendations))
+	
+	// 场景3: 活跃用户（有丰富的历史数据）
+	fmt.Println("场景3: 活跃用户")
+	activeUserContext := &UserContext{
+		UserID:         102,
+		TenantID:       1,
+		InstalledApps:  []uint{1, 2, 3, 4, 5},
+		RecentSearches: []string{"monitoring", "grafana", "prometheus"},
+	}
+	recommendations, _ = appStoreService.GetRecommendations(ctx, activeUserContext, 3)
+	fmt.Printf("活跃用户获得 %d 个高度个性化的推荐\n", len(recommendations))
+	
+	// 场景4: 企业用户（多租户场景）
+	fmt.Println("场景4: 企业多租户用户")
+	enterpriseUserContext := &UserContext{
+		UserID:            103,
+		TenantID:          2, // 不同的租户
+		PreferredCategory: CategoryDevTools,
+		CustomTags:        []string{"ci-cd", "automation"},
+	}
+	recommendations, _ = appStoreService.GetRecommendations(ctx, enterpriseUserContext, 3)
+	fmt.Printf("企业用户获得 %d 个符合团队需求的推荐\n", len(recommendations))
+}

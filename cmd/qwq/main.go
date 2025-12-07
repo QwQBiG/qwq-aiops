@@ -7,6 +7,7 @@ import (
 	"qwq/internal/agent"
 	"qwq/internal/config"
 	"qwq/internal/executor"
+	"qwq/internal/gateway"
 	"qwq/internal/logger"
 	"qwq/internal/monitor"
 	"qwq/internal/notify"
@@ -54,6 +55,7 @@ func main() {
 	rootCmd.AddCommand(&cobra.Command{Use: "patrol", Short: "Patrol Mode", Run: runPatrolMode})
 	rootCmd.AddCommand(&cobra.Command{Use: "status", Short: "Send status", Run: runStatusMode})
 	rootCmd.AddCommand(&cobra.Command{Use: "web", Short: "Web Dashboard", Run: runWebMode})
+	rootCmd.AddCommand(&cobra.Command{Use: "gateway", Short: "API Gateway Mode", Run: runGatewayMode})
 	
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "run [command]",
@@ -80,6 +82,36 @@ func runWebMode(cmd *cobra.Command, args []string) {
 	// 启动定时任务（包含启动时的日报发送）
 	go runPatrolLoop(8 * time.Hour)
 	server.Start(":8899")
+}
+
+func runGatewayMode(cmd *cobra.Command, args []string) {
+	logger.Info("🚀 启动增强版 API Gateway 模式")
+	
+	// 创建增强版网关服务器
+	gatewayServer := gateway.NewEnhancedGatewayServer(":8080")
+	
+	// 添加文档路由
+	gatewayServer.GetGateway().AddDocsRoutes()
+	
+	// 启动后台服务
+	server.TriggerPatrolFunc = performPatrol
+	server.TriggerStatusFunc = sendSystemStatus
+	go runPatrolLoop(8 * time.Hour)
+	
+	// 启动原有Web服务（作为微服务之一）
+	go func() {
+		logger.Info("启动 Web UI 服务在端口 :8899")
+		server.Start(":8899")
+	}()
+	
+	// 等待服务启动
+	time.Sleep(2 * time.Second)
+	
+	// 启动增强版网关
+	if err := gatewayServer.Start(); err != nil {
+		logger.Info("增强版网关启动失败: %v", err)
+		os.Exit(1)
+	}
 }
 
 func runPatrolMode(cmd *cobra.Command, args []string) {

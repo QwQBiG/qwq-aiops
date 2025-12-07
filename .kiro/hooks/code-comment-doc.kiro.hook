@@ -1,0 +1,27 @@
+{
+  "enabled": true,
+  "name": "Code Comment & Documentation Generator",
+  "description": "When code files are modified, check if they have comments and add Chinese comments if missing, then generate markdown documentation explaining the changes",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "*.go",
+      "*.js",
+      "*.vue",
+      "*.py",
+      "*.java",
+      "*.cpp",
+      "*.c",
+      "*.ts",
+      "*.jsx",
+      "*.tsx"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "检查这个文件的代码变动：\n\n1. 首先检查代码是否有足够的中文注释，如果没有请添加适当的中文注释来解释代码功能\n2. 然后根据文件的变动内容，生成一个markdown文档说明，包括：\n   - 变动的主要功能\n   - 修改的原因\n   - 影响范围\n   - 使用方法（如果适用）\n\n请用中文回复，并确保注释和文档都清晰易懂，简洁一些。"
+  },
+  "workspaceFolderName": "qwqOps",
+  "shortName": "code-comment-doc"
+}
