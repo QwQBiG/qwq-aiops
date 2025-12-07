@@ -8,6 +8,7 @@ REM 添加文件
 git add frontend/package-lock.json
 git add Dockerfile
 git add .gitignore
+git add go.mod
 git add DOCKER_FIX.md
 git add SETUP_COMPLETE.md
 
@@ -18,7 +19,7 @@ git status --short
 REM 提交
 echo.
 echo 💾 提交更改...
-git commit -m "fix: add package-lock.json and update Dockerfile for reproducible builds" -m "- Add frontend/package-lock.json for deterministic dependency installation" -m "- Update Dockerfile to use npm ci instead of npm install" -m "- Add frontend build artifacts to .gitignore" -m "- Fix Docker build error: npm ci requires package-lock.json" -m "" -m "This enables faster and more reliable Docker builds with npm ci."
+git commit -m "fix: add package-lock.json and fix Go version for Docker builds" -m "- Add frontend/package-lock.json for deterministic dependency installation" -m "- Update Dockerfile to use npm ci instead of npm install" -m "- Fix go.mod: downgrade from Go 1.24.0 to Go 1.23 (1.24 not released yet)" -m "- Add frontend build artifacts to .gitignore" -m "- Fix Docker build errors" -m "" -m "This enables faster and more reliable Docker builds."
 
 echo.
 echo ✅ 提交完成！

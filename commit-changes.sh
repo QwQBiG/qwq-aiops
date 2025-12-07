@@ -8,6 +8,7 @@ echo "📦 准备提交更改..."
 git add frontend/package-lock.json
 git add Dockerfile
 git add .gitignore
+git add go.mod
 git add DOCKER_FIX.md
 git add SETUP_COMPLETE.md
 
