@@ -1,0 +1,69 @@
+# Prometheus 配置文件
+# qwq AIOps 平台监控配置
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'qwq-aiops'
+    environment: 'production'
+
+# 告警管理器配置（可选）
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# 规则文件
+rule_files:
+  # - "alerts/*.yml"
+
+# 抓取配置
+scrape_configs:
+  # Prometheus 自身监控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # qwq 主服务监控
+  - job_name: 'qwq'
+    static_configs:
+      - targets: ['qwq:8899']
+        labels:
+          service: 'qwq'
+          component: 'api'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # MySQL 监控（如果启用）
+  - job_name: 'mysql'
+    static_configs:
+      - targets: ['qwq-mysql:3306']
+        labels:
+          service: 'mysql'
+          component: 'database'
+
+  # Redis 监控（如果启用）
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['qwq-redis:6379']
+        labels:
+          service: 'redis'
+          component: 'cache'
+
+  # Docker 监控（可选）
+  # - job_name: 'docker'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9323']
+  #       labels:
+  #         service: 'docker'
+
+  # Node Exporter 监控（可选）
+  # - job_name: 'node'
+  #   static_configs:
+  #     - targets: ['node-exporter:9100']
+  #       labels:
+  #         service: 'node-exporter'
