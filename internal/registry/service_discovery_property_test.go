@@ -2,7 +2,6 @@
 
 import (
 	"fmt"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -23,9 +22,6 @@ import (
 // 2. 故障转移：当实例失败时，系统能够自动切换到健康实例
 // 3. 服务恢复：失败的实例恢复后能够重新加入服务池
 func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
-	// 初始化随机数生成器
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	
 	// 创建属性测试集合
 	properties := gopter.NewProperties(nil)
 
