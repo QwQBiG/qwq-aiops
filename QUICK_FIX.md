@@ -138,19 +138,28 @@ cd ..
 docker-compose build --no-cache
 ```
 
-### 错误 2：Go 模块下载失败
+### 错误 2：Go 模块下载失败（网络超时）
 
 ```
 ERROR: failed to solve: process "/bin/sh -c go mod download" did not complete successfully
+go: github.com/xxx: Get "https://proxy.golang.org/...": dial tcp: i/o timeout
 ```
+
+**原因**：访问 Go 官方代理超时。
 
 **解决方案**：
 
+我已经在 Dockerfile 中添加了国内代理配置，直接重新构建即可：
+
 ```bash
-# 使用国内代理
-export GOPROXY=https://goproxy.cn,direct
-docker-compose build
+# 清理缓存重新构建
+docker-compose down
+docker system prune -f
+docker-compose build --no-cache
+docker-compose up -d
 ```
+
+如果还是失败，查看详细说明：[NETWORK_FIX.md](NETWORK_FIX.md)
 
 ### 错误 3：磁盘空间不足
 

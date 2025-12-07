@@ -38,6 +38,16 @@ fi
 echo -e "${GREEN}[2/4] 检查配置文件... OK${NC}"
 echo ""
 
+# 测试网络连接
+echo -e "${BLUE}[提示] 测试网络连接...${NC}"
+if curl -s -I https://goproxy.cn >/dev/null 2>&1; then
+    echo -e "${GREEN}[提示] 网络连接正常${NC}"
+else
+    echo -e "${YELLOW}[警告] 无法访问 goproxy.cn，构建可能较慢${NC}"
+    echo -e "${YELLOW}[提示] 如果构建失败，请查看 NETWORK_FIX.md${NC}"
+fi
+echo ""
+
 # 停止现有容器
 echo -e "${BLUE}[3/4] 停止现有容器...${NC}"
 docker-compose down

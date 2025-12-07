@@ -139,10 +139,25 @@ curl http://localhost:8081/api/health
 
 ### Q1: 构建失败怎么办？
 
+**如果是网络超时（Go 模块下载失败）**：
+
+我已经配置了国内代理，直接重新构建：
+
 ```bash
 # 清理缓存重新构建
+docker-compose down
+docker system prune -f
 docker-compose build --no-cache
 docker-compose up -d
+```
+
+详细说明：[NETWORK_FIX.md](NETWORK_FIX.md)
+
+**如果是其他错误**：
+
+```bash
+# 查看详细日志
+docker-compose build --progress=plain
 ```
 
 ### Q2: 端口 8081 也被占用？

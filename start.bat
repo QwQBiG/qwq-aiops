@@ -31,6 +31,17 @@ if not exist .env (
 echo [2/4] 检查配置文件... OK
 echo.
 
+REM 测试网络连接
+echo [提示] 测试网络连接...
+curl -s -I https://goproxy.cn >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [警告] 无法访问 goproxy.cn，构建可能较慢
+    echo [提示] 如果构建失败，请查看 NETWORK_FIX.md
+) else (
+    echo [提示] 网络连接正常
+)
+echo.
+
 REM 停止现有容器
 echo [3/4] 停止现有容器...
 docker-compose down

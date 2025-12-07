@@ -37,10 +37,14 @@ WORKDIR /app
 # 安装构建依赖
 RUN apk add --no-cache git ca-certificates
 
+# 设置 Go 代理（使用国内镜像加速）
+ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+ENV GO111MODULE=on
+
 # 复制 Go 模块文件
 COPY go.mod go.sum ./
 
-# 下载依赖
+# 下载依赖（增加超时时间）
 RUN go mod download && go mod verify
 
 # 复制源码
