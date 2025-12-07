@@ -1,0 +1,70 @@
+{
+  "common": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "refresh": "Refresh",
+    "loading": "Loading...",
+    "success": "Success",
+    "error": "Error",
+    "warning": "Warning",
+    "info": "Info"
+  },
+  "menu": {
+    "dashboard": "Dashboard",
+    "appstore": "App Store",
+    "containers": "Containers",
+    "websites": "Websites",
+    "databases": "Databases",
+    "monitoring": "Monitoring",
+    "users": "Users",
+    "terminal": "AI Terminal",
+    "files": "Files",
+    "logs": "Logs"
+  },
+  "appstore": {
+    "title": "App Store",
+    "search": "Search Apps",
+    "category": "Category",
+    "install": "Install",
+    "installed": "Installed",
+    "uninstall": "Uninstall",
+    "update": "Update",
+    "details": "Details"
+  },
+  "website": {
+    "title": "Website Management",
+    "domain": "Domain",
+    "ssl": "SSL Certificate",
+    "proxy": "Reverse Proxy",
+    "create": "Create Website",
+    "enable": "Enable",
+    "disable": "Disable"
+  },
+  "database": {
+    "title": "Database Management",
+    "connection": "Connection",
+    "query": "Query",
+    "backup": "Backup",
+    "restore": "Restore",
+    "execute": "Execute"
+  },
+  "monitoring": {
+    "title": "Monitoring & Alerts",
+    "metrics": "Metrics",
+    "alerts": "Alerts",
+    "rules": "Rules",
+    "status": "Status"
+  },
+  "user": {
+    "title": "User Management",
+    "username": "Username",
+    "role": "Role",
+    "permissions": "Permissions",
+    "logout": "Logout"
+  }
+}

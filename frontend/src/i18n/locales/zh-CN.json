@@ -1,0 +1,70 @@
+{
+  "common": {
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除",
+    "edit": "编辑",
+    "create": "创建",
+    "search": "搜索",
+    "refresh": "刷新",
+    "loading": "加载中...",
+    "success": "操作成功",
+    "error": "操作失败",
+    "warning": "警告",
+    "info": "提示"
+  },
+  "menu": {
+    "dashboard": "系统概览",
+    "appstore": "应用商店",
+    "containers": "容器管理",
+    "websites": "网站管理",
+    "databases": "数据库管理",
+    "monitoring": "监控告警",
+    "users": "用户权限",
+    "terminal": "AI 终端",
+    "files": "文件管理",
+    "logs": "系统日志"
+  },
+  "appstore": {
+    "title": "应用商店",
+    "search": "搜索应用",
+    "category": "分类",
+    "install": "安装",
+    "installed": "已安装",
+    "uninstall": "卸载",
+    "update": "更新",
+    "details": "详情"
+  },
+  "website": {
+    "title": "网站管理",
+    "domain": "域名",
+    "ssl": "SSL证书",
+    "proxy": "反向代理",
+    "create": "创建网站",
+    "enable": "启用",
+    "disable": "禁用"
+  },
+  "database": {
+    "title": "数据库管理",
+    "connection": "连接",
+    "query": "查询",
+    "backup": "备份",
+    "restore": "恢复",
+    "execute": "执行"
+  },
+  "monitoring": {
+    "title": "监控告警",
+    "metrics": "指标",
+    "alerts": "告警",
+    "rules": "规则",
+    "status": "状态"
+  },
+  "user": {
+    "title": "用户管理",
+    "username": "用户名",
+    "role": "角色",
+    "permissions": "权限",
+    "logout": "退出登录"
+  }
+}

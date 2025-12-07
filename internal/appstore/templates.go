@@ -10,6 +10,14 @@ func GetBuiltinTemplates() []*AppTemplate {
 		getRedisTemplate(),
 		getPostgreSQLTemplate(),
 		getPrometheusTemplate(),
+		getMongoDBTemplate(),
+		getGitLabTemplate(),
+		getJenkinsTemplate(),
+		getSonarQubeTemplate(),
+		getGrafanaTemplate(),
+		getJaegerTemplate(),
+		getRabbitMQTemplate(),
+		getKafkaTemplate(),
 	}
 }
 
@@ -379,5 +387,203 @@ networks:
 		Tags:        "monitoring,metrics,prometheus",
 		Content:     content,
 		Parameters:  string(paramsJSON),
+	}
+}
+
+// getMongoDBTemplate 获取 MongoDB 模板
+func getMongoDBTemplate() *AppTemplate {
+	params := []TemplateParameter{
+		{Name: "port", DisplayName: "端口", Type: ParamTypeInt, DefaultValue: 27017, Required: true},
+		{Name: "root_username", DisplayName: "Root 用户名", Type: ParamTypeString, DefaultValue: "root", Required: true},
+		{Name: "root_password", DisplayName: "Root 密码", Type: ParamTypePassword, Required: true},
+		{Name: "data_path", DisplayName: "数据目录", Type: ParamTypePath, DefaultValue: "./mongodb_data", Required: true},
+	}
+	paramsJSON, _ := json.Marshal(params)
+	
+	return &AppTemplate{
+		Name: "mongodb", DisplayName: "MongoDB", Version: "7.0", Category: CategoryDatabase,
+		Description: "MongoDB 是一个基于分布式文件存储的数据库", Icon: "mongodb.png",
+		Tags: "nosql,database,mongodb", Parameters: string(paramsJSON), Status: TemplateStatusPublished,
+		Content: `version: '3.8'
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: {{.name}}_mongodb
+    ports: ["{{.port}}:27017"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: {{.root_username}}
+      MONGO_INITDB_ROOT_PASSWORD: {{.root_password}}
+    volumes: ["{{.data_path}}:/data/db"]
+    restart: unless-stopped`,
+	}
+}
+
+// getGitLabTemplate 获取 GitLab 模板
+func getGitLabTemplate() *AppTemplate {
+	params := []TemplateParameter{
+		{Name: "http_port", DisplayName: "HTTP 端口", Type: ParamTypeInt, DefaultValue: 8080, Required: true},
+		{Name: "ssh_port", DisplayName: "SSH 端口", Type: ParamTypeInt, DefaultValue: 2222, Required: true},
+		{Name: "data_path", DisplayName: "数据目录", Type: ParamTypePath, DefaultValue: "./gitlab_data", Required: true},
+	}
+	paramsJSON, _ := json.Marshal(params)
+	
+	return &AppTemplate{
+		Name: "gitlab", DisplayName: "GitLab CE", Version: "latest", Category: CategoryDevTools,
+		Description: "GitLab 是一个开源的 DevOps 平台", Icon: "gitlab.png",
+		Tags: "git,devops,ci/cd", Parameters: string(paramsJSON), Status: TemplateStatusPublished,
+		Content: `version: '3.8'
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    container_name: {{.name}}_gitlab
+    ports: ["{{.http_port}}:80", "{{.ssh_port}}:22"]
+    volumes: ["{{.data_path}}/config:/etc/gitlab", "{{.data_path}}/logs:/var/log/gitlab", "{{.data_path}}/data:/var/opt/gitlab"]
+    restart: unless-stopped`,
+	}
+}
+
+// getJenkinsTemplate 获取 Jenkins 模板
+func getJenkinsTemplate() *AppTemplate {
+	params := []TemplateParameter{
+		{Name: "port", DisplayName: "Web 端口", Type: ParamTypeInt, DefaultValue: 8080, Required: true},
+		{Name: "data_path", DisplayName: "数据目录", Type: ParamTypePath, DefaultValue: "./jenkins_data", Required: true},
+	}
+	paramsJSON, _ := json.Marshal(params)
+	
+	return &AppTemplate{
+		Name: "jenkins", DisplayName: "Jenkins", Version: "lts", Category: CategoryDevTools,
+		Description: "Jenkins 是一个开源的持续集成工具", Icon: "jenkins.png",
+		Tags: "ci/cd,automation,jenkins", Parameters: string(paramsJSON), Status: TemplateStatusPublished,
+		Content: `version: '3.8'
+services:
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: {{.name}}_jenkins
+    ports: ["{{.port}}:8080", "50000:50000"]
+    volumes: ["{{.data_path}}:/var/jenkins_home"]
+    restart: unless-stopped`,
+	}
+}
+
+// getSonarQubeTemplate 获取 SonarQube 模板
+func getSonarQubeTemplate() *AppTemplate {
+	params := []TemplateParameter{
+		{Name: "port", DisplayName: "Web 端口", Type: ParamTypeInt, DefaultValue: 9000, Required: true},
+	}
+	paramsJSON, _ := json.Marshal(params)
+	
+	return &AppTemplate{
+		Name: "sonarqube", DisplayName: "SonarQube", Version: "community", Category: CategoryDevTools,
+		Description: "SonarQube 是一个代码质量管理平台", Icon: "sonarqube.png",
+		Tags: "code-quality,static-analysis", Parameters: string(paramsJSON), Status: TemplateStatusPublished,
+		Content: `version: '3.8'
+services:
+  sonarqube:
+    image: sonarqube:community
+    container_name: {{.name}}_sonarqube
+    ports: ["{{.port}}:9000"]
+    restart: unless-stopped`,
+	}
+}
+
+// getGrafanaTemplate 获取 Grafana 模板
+func getGrafanaTemplate() *AppTemplate {
+	params := []TemplateParameter{
+		{Name: "port", DisplayName: "Web 端口", Type: ParamTypeInt, DefaultValue: 3000, Required: true},
+		{Name: "data_path", DisplayName: "数据目录", Type: ParamTypePath, DefaultValue: "./grafana_data", Required: true},
+	}
+	paramsJSON, _ := json.Marshal(params)
+	
+	return &AppTemplate{
+		Name: "grafana", DisplayName: "Grafana", Version: "latest", Category: CategoryMonitoring,
+		Description: "Grafana 是一个开源的监控和可视化平台", Icon: "grafana.png",
+		Tags: "monitoring,visualization,metrics", Parameters: string(paramsJSON), Status: TemplateStatusPublished,
+		Content: `version: '3.8'
+services:
+  grafana:
+    image: grafana/grafana:latest
+    container_name: {{.name}}_grafana
+    ports: ["{{.port}}:3000"]
+    volumes: ["{{.data_path}}:/var/lib/grafana"]
+    restart: unless-stopped`,
+	}
+}
+
+// getJaegerTemplate 获取 Jaeger 模板
+func getJaegerTemplate() *AppTemplate {
+	params := []TemplateParameter{
+		{Name: "ui_port", DisplayName: "UI 端口", Type: ParamTypeInt, DefaultValue: 16686, Required: true},
+	}
+	paramsJSON, _ := json.Marshal(params)
+	
+	return &AppTemplate{
+		Name: "jaeger", DisplayName: "Jaeger", Version: "latest", Category: CategoryMonitoring,
+		Description: "Jaeger 是一个分布式追踪系统", Icon: "jaeger.png",
+		Tags: "tracing,monitoring,observability", Parameters: string(paramsJSON), Status: TemplateStatusPublished,
+		Content: `version: '3.8'
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: {{.name}}_jaeger
+    ports: ["{{.ui_port}}:16686", "6831:6831/udp"]
+    restart: unless-stopped`,
+	}
+}
+
+// getRabbitMQTemplate 获取 RabbitMQ 模板
+func getRabbitMQTemplate() *AppTemplate {
+	params := []TemplateParameter{
+		{Name: "port", DisplayName: "AMQP 端口", Type: ParamTypeInt, DefaultValue: 5672, Required: true},
+		{Name: "management_port", DisplayName: "管理界面端口", Type: ParamTypeInt, DefaultValue: 15672, Required: true},
+		{Name: "username", DisplayName: "用户名", Type: ParamTypeString, DefaultValue: "admin", Required: true},
+		{Name: "password", DisplayName: "密码", Type: ParamTypePassword, Required: true},
+	}
+	paramsJSON, _ := json.Marshal(params)
+	
+	return &AppTemplate{
+		Name: "rabbitmq", DisplayName: "RabbitMQ", Version: "management", Category: CategoryMessageQueue,
+		Description: "RabbitMQ 是一个开源的消息代理软件", Icon: "rabbitmq.png",
+		Tags: "message-queue,amqp,rabbitmq", Parameters: string(paramsJSON), Status: TemplateStatusPublished,
+		Content: `version: '3.8'
+services:
+  rabbitmq:
+    image: rabbitmq:management
+    container_name: {{.name}}_rabbitmq
+    ports: ["{{.port}}:5672", "{{.management_port}}:15672"]
+    environment:
+      RABBITMQ_DEFAULT_USER: {{.username}}
+      RABBITMQ_DEFAULT_PASS: {{.password}}
+    restart: unless-stopped`,
+	}
+}
+
+// getKafkaTemplate 获取 Kafka 模板
+func getKafkaTemplate() *AppTemplate {
+	params := []TemplateParameter{
+		{Name: "port", DisplayName: "Kafka 端口", Type: ParamTypeInt, DefaultValue: 9092, Required: true},
+	}
+	paramsJSON, _ := json.Marshal(params)
+	
+	return &AppTemplate{
+		Name: "kafka", DisplayName: "Apache Kafka", Version: "latest", Category: CategoryMessageQueue,
+		Description: "Kafka 是一个分布式流处理平台", Icon: "kafka.png",
+		Tags: "message-queue,streaming,kafka", Parameters: string(paramsJSON), Status: TemplateStatusPublished,
+		Content: `version: '3.8'
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: {{.name}}_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: {{.name}}_kafka
+    depends_on: [zookeeper]
+    ports: ["{{.port}}:9092"]
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:{{.port}}
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    restart: unless-stopped`,
 	}
 }

@@ -11,29 +11,49 @@
           active-text-color="#409EFF"
           background-color="#10141d"
           text-color="#a1a7b7"
-          :default-active="activeMenu"
+          :default-active="$route.path"
           class="el-menu-vertical"
-          @select="handleSelect"
+          router
         >
-          <el-menu-item index="dashboard">
+          <el-menu-item index="/dashboard">
             <el-icon><Odometer /></el-icon>
-            <span>概览</span>
+            <span>{{ t('menu.dashboard') }}</span>
           </el-menu-item>
-          <el-menu-item index="containers">
+          <el-menu-item index="/appstore">
+            <el-icon><ShoppingCart /></el-icon>
+            <span>{{ t('menu.appstore') }}</span>
+          </el-menu-item>
+          <el-menu-item index="/containers">
             <el-icon><Box /></el-icon>
-            <span>容器</span>
+            <span>{{ t('menu.containers') }}</span>
           </el-menu-item>
-          <el-menu-item index="terminal">
+          <el-menu-item index="/websites">
+            <el-icon><Monitor /></el-icon>
+            <span>{{ t('menu.websites') }}</span>
+          </el-menu-item>
+          <el-menu-item index="/databases">
+            <el-icon><Coin /></el-icon>
+            <span>{{ t('menu.databases') }}</span>
+          </el-menu-item>
+          <el-menu-item index="/monitoring">
+            <el-icon><DataLine /></el-icon>
+            <span>{{ t('menu.monitoring') }}</span>
+          </el-menu-item>
+          <el-menu-item index="/users">
+            <el-icon><User /></el-icon>
+            <span>{{ t('menu.users') }}</span>
+          </el-menu-item>
+          <el-menu-item index="/terminal">
             <el-icon><ChatLineSquare /></el-icon>
-            <span>AI 终端</span>
+            <span>{{ t('menu.terminal') }}</span>
           </el-menu-item>
-          <el-menu-item index="files">
+          <el-menu-item index="/files">
             <el-icon><Folder /></el-icon>
-            <span>文件</span>
+            <span>{{ t('menu.files') }}</span>
           </el-menu-item>
-          <el-menu-item index="logs">
+          <el-menu-item index="/logs">
             <el-icon><Document /></el-icon>
-            <span>日志</span>
+            <span>{{ t('menu.logs') }}</span>
           </el-menu-item>
         </el-menu>
       </el-aside>
@@ -45,15 +65,30 @@
             <span class="current-page">{{ pageTitle }}</span>
           </div>
           <div class="header-actions">
+            <el-dropdown @command="handleLocaleChange">
+              <el-button text>
+                <el-icon><Globe /></el-icon>
+                {{ currentLocale }}
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="zh-CN">中文</el-dropdown-item>
+                  <el-dropdown-item command="en-US">English</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <el-button type="primary" plain size="small" @click="triggerPatrol" :loading="patrolLoading">
-              <el-icon class="el-icon--left"><Lightning /></el-icon>立即巡检
+              <el-icon class="el-icon--left"><Lightning /></el-icon>
+              {{ t('common.refresh') }}
             </el-button>
           </div>
         </el-header>
         <el-main class="main-content">
-          <KeepAlive>
-            <component :is="currentComponent" />
-          </KeepAlive>
+          <router-view v-slot="{ Component }">
+            <keep-alive>
+              <component :is="Component" />
+            </keep-alive>
+          </router-view>
         </el-main>
       </el-container>
     </el-container>
@@ -61,48 +96,43 @@
 </template>
 
 <script setup>
+// 导入 Vue 核心功能和第三方库
 import { ref, computed } from 'vue'
-import Dashboard from './components/Dashboard.vue'
-import Terminal from './components/Terminal.vue'
-import Logs from './components/Logs.vue'
-import Containers from './components/Containers.vue'
+import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import Files from './components/Files.vue'
 
-const activeMenu = ref('dashboard')
+// 获取路由和国际化实例
+const route = useRoute()
+const { t, locale } = useI18n()
+
+// 巡检按钮加载状态
 const patrolLoading = ref(false)
 
-const components = {
-  dashboard: Dashboard,
-  terminal: Terminal,
-  logs: Logs,
-  files: Files, 
-  containers: Containers
+// 当前语言显示文本
+const currentLocale = computed(() => locale.value === 'zh-CN' ? '中文' : 'English')
+
+// 根据当前路由动态生成页面标题
+const pageTitle = computed(() => {
+  const path = route.path.substring(1) || 'dashboard'
+  return t(`menu.${path}`)
+})
+
+// 切换语言
+const handleLocaleChange = (lang) => {
+  locale.value = lang
+  localStorage.setItem('locale', lang)
 }
 
-const titles = {
-  dashboard: '系统概览',
-  terminal: '智能运维终端',
-  logs: '系统运行日志',
-  files: '文件管理',
-  containers: '容器管理'
-}
-
-const currentComponent = computed(() => components[activeMenu.value])
-const pageTitle = computed(() => titles[activeMenu.value])
-
-const handleSelect = (key) => {
-  activeMenu.value = key
-}
-
+// 触发系统巡检
 const triggerPatrol = async () => {
   patrolLoading.value = true
   try {
     await axios.get('/api/trigger')
-    ElMessage.success('巡检指令已发送')
+    ElMessage.success(t('common.success'))
   } catch (e) {
-    ElMessage.error('触发失败')
+    ElMessage.error(t('common.error'))
   } finally {
     setTimeout(() => { patrolLoading.value = false }, 2000)
   }
