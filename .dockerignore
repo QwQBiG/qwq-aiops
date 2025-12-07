@@ -1,0 +1,82 @@
+# Git 相关
+.git
+.gitignore
+.gitattributes
+
+# IDE 和编辑器
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 文档
+*.md
+docs/
+LICENSE
+CONTRIBUTING.md
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+
+# 测试文件
+*_test.go
+**/*_test.go
+test/
+tests/
+testdata/
+
+# 构建产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+qwq
+qwq.exe
+dist/
+build/
+bin/
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/.nuxt/
+frontend/.output/
+frontend/.cache/
+
+# 数据和日志
+data/
+logs/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# 备份文件
+backups/
+*.bak
+*.backup
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+
+# 环境配置
+.env
+.env.local
+.env.*.local
+config.json
+config.local.json
+
+# Kiro 相关
+.kiro/
+
+# 其他
+coverage.txt
+*.prof
+*.out

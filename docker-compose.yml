@@ -2,30 +2,66 @@ version: '3.8'
 
 services:
   qwq:
-    build: .
-    image: qwq-aiops:latest
+    # 使用 GitHub Container Registry 镜像
+    image: ghcr.io/your-org/qwq-aiops:latest
+    # 或者本地构建
+    # build: .
     container_name: qwq
     restart: unless-stopped
     ports:
-      - "8899:8899"
+      - "8080:8080"  # 主服务端口
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./data:/root/data
-      - ./config:/root/config
+      # Docker socket（用于容器管理）
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # 数据持久化
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+      # 配置文件（可选）
+      - ./config.json:/app/config.json:ro
     environment:
+      # 基础配置
       - TZ=Asia/Shanghai
-      - DB_PATH=/root/data/qwq.db
+      - PORT=8080
       - LOG_LEVEL=info
+      - ENVIRONMENT=production
+      
+      # 数据库配置
+      - DB_TYPE=sqlite
+      - DB_PATH=/app/data/qwq.db
+      
+      # AI 配置（根据需要修改）
+      - AI_PROVIDER=openai
+      # - OPENAI_API_KEY=your-api-key-here
+      # - OLLAMA_HOST=http://ollama:11434
+      
+      # 安全配置（请修改为强密码）
+      - JWT_SECRET=change-this-to-random-secret
+      - ENCRYPTION_KEY=change-this-to-32-byte-key
     networks:
       - qwq-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8899/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
-      timeout: 10s
+      timeout: 3s
       retries: 3
-      start_period: 40s
+      start_period: 10s
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
-  # MySQL 数据库（可选）
+  # MySQL 数据库（可选，生产环境推荐）
   mysql:
     image: mysql:8.0
     container_name: qwq-mysql
@@ -33,13 +69,30 @@ services:
     ports:
       - "3306:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=qwq123456
+      - MYSQL_ROOT_PASSWORD=change-this-password
       - MYSQL_DATABASE=qwq
+      - MYSQL_USER=qwq
+      - MYSQL_PASSWORD=change-this-password
       - TZ=Asia/Shanghai
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./config/mysql.cnf:/etc/mysql/conf.d/custom.cnf:ro
+    command: 
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
     networks:
       - qwq-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
 
   # Redis 缓存（可选）
   redis:

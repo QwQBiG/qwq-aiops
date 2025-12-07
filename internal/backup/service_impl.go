@@ -233,7 +233,7 @@ func (s *BackupServiceImpl) cleanupOldBackups(ctx context.Context, policy *Backu
 	
 	var oldJobs []*BackupJob
 	s.db.WithContext(ctx).
-		Where("policy_id = ? AND created_at < ? AND status = ?", policy.PolicyID, cutoffTime, StatusCompleted).
+		Where("policy_id = ? AND created_at < ? AND status = ?", policy.ID, cutoffTime, StatusCompleted).
 		Find(&oldJobs)
 	
 	storage := s.storageBackends[policy.StorageType]

@@ -116,7 +116,6 @@ func (s *MockResourceStore) DeleteResource(ctx context.Context, resourceID strin
 	resource, exists := s.resources[resourceID]
 	if !exists {
 		return fmt.Errorf("resource not found")
-	}fmt.Errorf("resource not found")
 	}
 	
 	// 租户隔离检查：只能删除自己租户的资源

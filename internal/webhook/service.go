@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -59,7 +58,7 @@ type Webhook struct {
 	Name        string      `json:"name" gorm:"not null"`
 	URL         string      `json:"url" gorm:"not null"`
 	Secret      string      `json:"secret,omitempty"`
-	Events      []EventType `json:"events" gorm:"type:jsonb"`
+	Events      []EventType `json:"events" gorm:"type:text;serializer:json"`
 	Enabled     bool        `json:"enabled" gorm:"default:true"`
 	RetryCount  int         `json:"retry_count" gorm:"default:3"`
 	Timeout     int         `json:"timeout" gorm:"default:30"` // 秒
