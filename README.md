@@ -96,22 +96,26 @@ chmod +x deploy.sh
 ./deploy.sh
 
 # 4. 访问系统
-# 前端界面: http://localhost:8080
-# API 文档: http://localhost:8080/api/docs
+# 前端界面: http://localhost:8081
+# API 文档: http://localhost:8081/api/docs
 # 默认账号: admin / admin123
 ```
 
 ### Docker Compose 部署
 
 ```bash
-# 启动所有服务
-docker-compose up -d
+# 构建并启动所有服务（首次运行）
+docker-compose up -d --build
 
 # 查看日志
-docker-compose logs -f
+docker-compose logs -f qwq
 
 # 停止服务
 docker-compose down
+
+# 访问系统
+# 前端界面: http://localhost:8081
+# API 文档: http://localhost:8081/api/docs
 ```
 
 ### 手动编译

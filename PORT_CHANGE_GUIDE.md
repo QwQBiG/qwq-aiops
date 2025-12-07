@@ -16,13 +16,18 @@
 # 1. 停止现有服务（如果正在运行）
 docker-compose down
 
-# 2. 启动服务
-docker-compose up -d
+# 2. 构建并启动服务（首次运行需要构建镜像）
+docker-compose up -d --build
 
-# 3. 访问系统
+# 3. 查看构建和启动日志
+docker-compose logs -f
+
+# 4. 访问系统
 # 前端界面: http://localhost:8081
 # API 文档: http://localhost:8081/api/docs
 ```
+
+**注意**：首次启动会自动构建 Docker 镜像，这可能需要几分钟时间。
 
 ### 方案 2：使用其他端口
 

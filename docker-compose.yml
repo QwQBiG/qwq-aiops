@@ -2,10 +2,11 @@ version: '3.8'
 
 services:
   qwq:
-    # 使用 GitHub Container Registry 镜像
-    image: ghcr.io/your-org/qwq-aiops:latest
-    # 或者本地构建
-    # build: .
+    # 本地构建（推荐）
+    build: .
+    image: qwq-aiops:latest
+    # 或者使用 GitHub Container Registry 镜像（需要先发布）
+    # image: ghcr.io/qwqbig/qwq-aiops:latest
     container_name: qwq
     restart: unless-stopped
     ports:

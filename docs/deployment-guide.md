@@ -76,21 +76,24 @@ cd qwq-aiops
 # 2. 配置环境变量（可选）
 cp .env.example .env
 
-# 3. 启动所有服务
-docker-compose up -d
+# 3. 构建并启动所有服务（首次运行需要构建镜像，约 5-10 分钟）
+docker-compose up -d --build
 
 # 4. 查看服务状态
 docker-compose ps
 
 # 5. 查看日志
-docker-compose logs -f
+docker-compose logs -f qwq
 
 # 6. 访问系统
-# 前端界面: http://localhost:8080
-# API 文档: http://localhost:8080/api/docs
+# 前端界面: http://localhost:8081
+# API 文档: http://localhost:8081/api/docs
+# 健康检查: http://localhost:8081/api/health
 
-# 注意：如果 8080 端口被占用，可以修改 docker-compose.yml 中的端口映射
-# 例如改为 "8081:8080"，然后访问 http://localhost:8081
+# 注意：
+# - 首次启动会自动构建 Docker 镜像，需要一些时间
+# - 端口已修改为 8081（避免与其他服务冲突）
+# - 如需修改端口，编辑 docker-compose.yml 中的端口映射
 ```
 
 ### 方式三：手动 Docker 部署

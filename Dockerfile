@@ -65,8 +65,8 @@ FROM alpine:3.19
 LABEL maintainer="qwq AIOps Team" \
       version="1.0.0" \
       description="qwq AIOps - AI-Powered Intelligent Operations Platform" \
-      org.opencontainers.image.source="https://github.com/your-org/qwq-aiops" \
-      org.opencontainers.image.documentation="https://github.com/your-org/qwq-aiops/blob/main/README.md" \
+      org.opencontainers.image.source="https://github.com/QwQBiG/qwq-aiops" \
+      org.opencontainers.image.documentation="https://github.com/QwQBiG/qwq-aiops/blob/main/README.md" \
       org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
