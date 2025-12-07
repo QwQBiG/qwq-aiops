@@ -109,14 +109,21 @@ RUN apk add --no-cache \
     docker-cli \
     && rm -rf /var/cache/apk/*
 
-# 安装 kubectl（自动适配架构）
-ARG INSTALL_KUBECTL=true
+# 安装 kubectl（可选，默认不安装以加快构建速度）
+# 如需安装，构建时添加参数：--build-arg INSTALL_KUBECTL=true
+ARG INSTALL_KUBECTL=false
 ARG TARGETARCH
 RUN if [ "$INSTALL_KUBECTL" = "true" ]; then \
+    echo "正在安装 kubectl..." && \
     KUBECTL_VERSION=$(wget -qO- https://dl.k8s.io/release/stable.txt) && \
     ARCH=${TARGETARCH:-amd64} && \
-    wget -q "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" -O /usr/local/bin/kubectl && \
-    chmod +x /usr/local/bin/kubectl; \
+    # 使用国内镜像加速（如果可用）
+    (wget -q "https://kubernetes.oss-cn-hangzhou.aliyuncs.com/kubernetes-release/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" -O /usr/local/bin/kubectl || \
+     wget -q "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" -O /usr/local/bin/kubectl) && \
+    chmod +x /usr/local/bin/kubectl && \
+    echo "kubectl 安装完成"; \
+    else \
+    echo "跳过 kubectl 安装（加快构建速度）"; \
     fi
 
 # 设置时区
