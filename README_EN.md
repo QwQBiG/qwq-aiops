@@ -8,8 +8,8 @@
 [![Vue Version](https://img.shields.io/badge/Vue-3.x-brightgreen.svg)](https://vuejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Supported-blue.svg)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/yourusername/qwq)
-[![Version](https://img.shields.io/badge/version-v1.0.0-blue.svg)](https://github.com/yourusername/qwq/releases)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/QwQBiG/qwq-aiops)
+[![Version](https://img.shields.io/badge/version-v1.0.0-blue.svg)](https://github.com/QwQBiG/qwq-aiops/releases)
 [![Status](https://img.shields.io/badge/status-production--ready-success.svg)](docs/production-readiness-checklist.md)
 [![Test Coverage](https://img.shields.io/badge/property--tests-13%20core%20%7C%2096%2B%20sub-success.svg)](docs/project-completion-summary.md)
 
@@ -84,8 +84,8 @@ English | [简体中文](README.md)
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/yourusername/qwq.git
-cd qwq
+git clone https://github.com/QwQBiG/qwq-aiops.git
+cd qwq-aiops
 
 # 2. Configure environment variables (optional)
 cp .env.example .env
@@ -412,7 +412,7 @@ We welcome all forms of contributions!
 
 ### Reporting Issues
 
-If you find a bug or have a feature suggestion, please [create an Issue](https://github.com/yourusername/qwq/issues).
+If you find a bug or have a feature suggestion, please [create an Issue](https://github.com/QwQBiG/qwq-aiops/issues).
 
 ---
 
