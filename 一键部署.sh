@@ -125,7 +125,7 @@ echo ""
 
 # 步骤 5: 停止现有容器
 echo -e "${BLUE}[5/6] 停止现有容器...${NC}"
-docker-compose down 2>/dev/null || true
+docker compose down 2>/dev/null || true
 echo -e "${GREEN}✓ 现有容器已停止${NC}"
 echo ""
 
@@ -135,14 +135,14 @@ echo -e "${YELLOW}[提示] 首次构建需要 6-10 分钟，请耐心等待...${
 echo ""
 
 # 构建
-if docker-compose build --no-cache; then
+if docker compose build --no-cache; then
     echo ""
     echo -e "${GREEN}✓ 构建成功${NC}"
     echo ""
     
     # 启动
     echo -e "${BLUE}启动服务...${NC}"
-    if docker-compose up -d; then
+    if docker compose up -d; then
         echo ""
         echo "========================================"
         echo -e "${GREEN}  部署成功！${NC}"
@@ -159,10 +159,10 @@ if docker-compose build --no-cache; then
         echo "  密码: admin123"
         echo ""
         echo "查看日志："
-        echo "  docker-compose logs -f qwq"
+        echo "  docker compose logs -f qwq"
         echo ""
         echo "查看服务状态："
-        echo "  docker-compose ps"
+        echo "  docker compose ps"
         echo ""
         echo "========================================"
         
@@ -177,13 +177,13 @@ if docker-compose build --no-cache; then
         else
             echo -e "${YELLOW}⚠ 服务可能还在启动中，请稍后访问${NC}"
             echo "运行以下命令查看日志："
-            echo "  docker-compose logs -f qwq"
+            echo "  docker compose logs -f qwq"
         fi
     else
         echo ""
         echo -e "${RED}✗ 启动失败${NC}"
         echo "查看错误日志："
-        echo "  docker-compose logs"
+        echo "  docker compose logs"
         exit 1
     fi
 else

@@ -45,26 +45,37 @@
 
 ## 快速开始
 
-### 方式一：使用部署脚本
+### 方式一：一键部署（推荐）⭐
+
+**最简单的部署方式，自动完成所有配置！**
 
 ```bash
 # 1. 克隆项目
 git clone https://github.com/QwQBiG/qwq-aiops.git
 cd qwq-aiops
 
-# 2. 配置环境变量（可选）
-cp .env.example .env
-# 编辑 .env 文件，配置 AI 模型 API Key
+# 2. 运行一键部署脚本
+chmod +x 一键部署.sh
+sudo ./一键部署.sh
 
-# 3. 运行部署脚本
-chmod +x deploy.sh
-./deploy.sh
-
-# 4. 访问系统
-# 前端界面: http://localhost:8080
-# API 文档: http://localhost:8080/api/docs
+# 3. 访问系统
+# 前端界面: http://localhost:8081
+# API 文档: http://localhost:8081/api/docs
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:3000
 # 默认账号: admin / admin123
 ```
+
+**脚本会自动完成：**
+- ✅ 配置 Docker 国内镜像源（加速下载）
+- ✅ 创建所需的配置文件（prometheus.yml, mysql.cnf）
+- ✅ 构建 Docker 镜像
+- ✅ 启动所有服务
+- ✅ 验证服务状态
+
+**预期时间：**
+- 首次部署：6-10 分钟
+- 后续部署：1-2 分钟
 
 ### 方式二：使用 Docker Compose（推荐）
 
@@ -76,14 +87,14 @@ cd qwq-aiops
 # 2. 配置环境变量（可选）
 cp .env.example .env
 
-# 3. 构建并启动所有服务（首次运行需要构建镜像，约 5-10 分钟）
-docker-compose up -d --build
+# 3. 构建并启动所有服务（首次运行需要构建镜像，约 6-10 分钟）
+docker compose up -d --build
 
 # 4. 查看服务状态
-docker-compose ps
+docker compose ps
 
 # 5. 查看日志
-docker-compose logs -f qwq
+docker compose logs -f qwq
 
 # 6. 访问系统
 # 前端界面: http://localhost:8081
@@ -91,6 +102,7 @@ docker-compose logs -f qwq
 # 健康检查: http://localhost:8081/api/health
 
 # 注意：
+# - 使用 docker compose（V2，无连字符）而不是 docker-compose（V1）
 # - 首次启动会自动构建 Docker 镜像，需要一些时间
 # - 端口已修改为 8081（避免与其他服务冲突）
 # - 如需修改端口，编辑 docker-compose.yml 中的端口映射
@@ -376,19 +388,19 @@ backup:
 
 ```bash
 # 启动服务
-docker-compose up -d
+docker compose up -d
 
 # 查看服务状态
-docker-compose ps
+docker compose ps
 
 # 查看日志
-docker-compose logs -f
+docker compose logs -f
 
 # 停止服务
-docker-compose down
+docker compose down
 
 # 重启服务
-docker-compose restart
+docker compose restart
 ```
 
 ### 4. 配置反向代理（Nginx）
@@ -581,26 +593,26 @@ docker logs qwq > qwq.log
 
 ```bash
 # 停止服务
-docker-compose stop qwq
+docker compose stop qwq
 
 # 备份数据
 tar -czf qwq-backup-$(date +%Y%m%d).tar.gz data/
 
 # 启动服务
-docker-compose start qwq
+docker compose start qwq
 ```
 
 #### 恢复
 
 ```bash
 # 停止服务
-docker-compose stop qwq
+docker compose stop qwq
 
 # 恢复数据
 tar -xzf qwq-backup-20240101.tar.gz
 
 # 启动服务
-docker-compose start qwq
+docker compose start qwq
 ```
 
 ### 更新升级
@@ -610,10 +622,10 @@ docker-compose start qwq
 git pull
 
 # 重新构建镜像
-docker-compose build
+docker compose build
 
 # 重启服务（零停机）
-docker-compose up -d --no-deps --build qwq
+docker compose up -d --no-deps --build qwq
 ```
 
 ## 故障排查
@@ -707,8 +719,8 @@ services:
 然后重启服务：
 
 ```bash
-docker-compose down
-docker-compose up -d
+docker compose down
+docker compose up -d
 # 访问 http://localhost:8081
 ```
 
@@ -1050,7 +1062,7 @@ server {
 # 最简单的部署方式
 git clone https://github.com/QwQBiG/qwq-aiops.git
 cd qwq-aiops
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 场景 2：小型团队（单服务器）

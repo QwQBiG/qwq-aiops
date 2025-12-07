@@ -104,14 +104,20 @@ chmod +x deploy.sh
 ### Docker Compose Deployment
 
 ```bash
-# Start all services
-docker-compose up -d
+# Build and start all services (first run takes 6-10 minutes)
+docker compose up -d --build
 
 # View logs
-docker-compose logs -f
+docker compose logs -f qwq
 
 # Stop services
-docker-compose down
+docker compose down
+
+# Access the system
+# Frontend: http://localhost:8081
+# API Docs: http://localhost:8081/api/docs
+
+# Note: Use docker compose (V2, no hyphen) instead of docker-compose (V1)
 ```
 
 ### Manual Build

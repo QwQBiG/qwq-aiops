@@ -104,18 +104,20 @@ chmod +x deploy.sh
 ### Docker Compose 部署
 
 ```bash
-# 构建并启动所有服务（首次运行）
-docker-compose up -d --build
+# 构建并启动所有服务（首次运行，约 6-10 分钟）
+docker compose up -d --build
 
 # 查看日志
-docker-compose logs -f qwq
+docker compose logs -f qwq
 
 # 停止服务
-docker-compose down
+docker compose down
 
 # 访问系统
 # 前端界面: http://localhost:8081
 # API 文档: http://localhost:8081/api/docs
+
+# 注意：使用 docker compose（V2，无连字符）而不是 docker-compose（V1）
 ```
 
 ### 手动编译

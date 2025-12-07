@@ -28,11 +28,13 @@ chmod +x start.sh
 ### 方式 2：使用 Docker Compose
 
 ```bash
-# 构建并启动
-docker-compose up -d --build
+# 构建并启动（约 6-10 分钟）
+docker compose up -d --build
 
 # 查看日志
-docker-compose logs -f qwq
+docker compose logs -f qwq
+
+# 注意：使用 docker compose（V2，无连字符）而不是 docker-compose（V1）
 ```
 
 ### 方式 3：手动构建
@@ -96,7 +98,7 @@ docker run -d \
 
 3. **重启服务**：
    ```bash
-   docker-compose restart qwq
+   docker compose restart qwq
    ```
 
 ## 📚 文档导航
@@ -118,7 +120,7 @@ docker run -d \
 
 ```bash
 # 检查容器状态
-docker-compose ps
+docker compose ps
 
 # 预期输出
 NAME   IMAGE              STATUS         PORTS
@@ -145,10 +147,10 @@ curl http://localhost:8081/api/health
 
 ```bash
 # 清理缓存重新构建
-docker-compose down
+docker compose down
 docker system prune -f
-docker-compose build --no-cache
-docker-compose up -d
+docker compose build --no-cache
+docker compose up -d
 ```
 
 详细说明：[NETWORK_FIX.md](NETWORK_FIX.md)
@@ -157,7 +159,7 @@ docker-compose up -d
 
 ```bash
 # 查看详细日志
-docker-compose build --progress=plain
+docker compose build --progress=plain
 ```
 
 ### Q2: 端口 8081 也被占用？
@@ -172,20 +174,20 @@ ports:
 
 ```bash
 # 查看实时日志
-docker-compose logs -f qwq
+docker compose logs -f qwq
 
 # 查看最近 100 行
-docker-compose logs --tail 100 qwq
+docker compose logs --tail 100 qwq
 ```
 
 ### Q4: 如何停止服务？
 
 ```bash
 # 停止服务
-docker-compose down
+docker compose down
 
 # 停止并删除数据卷
-docker-compose down -v
+docker compose down -v
 ```
 
 ### Q5: 如何更新系统？
@@ -195,7 +197,7 @@ docker-compose down -v
 git pull
 
 # 重新构建并启动
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ## 🎓 下一步
