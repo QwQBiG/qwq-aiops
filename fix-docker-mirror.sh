@@ -44,6 +44,8 @@ echo -e "${BLUE}[2/4] 配置国内镜像源...${NC}"
 $SUDO tee /etc/docker/daemon.json > /dev/null <<'EOF'
 {
   "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://reg-mirror.qiniu.com",
     "https://docker.mirrors.ustc.edu.cn",
     "https://hub-mirror.c.163.com",
     "https://mirror.baidubce.com",

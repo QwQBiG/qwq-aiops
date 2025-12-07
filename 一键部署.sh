@@ -42,6 +42,8 @@ fi
 $SUDO tee /etc/docker/daemon.json > /dev/null <<'EOF'
 {
   "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://reg-mirror.qiniu.com",
     "https://docker.mirrors.ustc.edu.cn",
     "https://hub-mirror.c.163.com",
     "https://mirror.baidubce.com",
@@ -124,13 +126,56 @@ fi
 echo ""
 
 # 步骤 5: 停止现有容器
-echo -e "${BLUE}[5/6] 停止现有容器...${NC}"
+echo -e "${BLUE}[5/7] 停止现有容器...${NC}"
 docker compose down 2>/dev/null || true
 echo -e "${GREEN}✓ 现有容器已停止${NC}"
 echo ""
 
-# 步骤 6: 构建并启动
-echo -e "${BLUE}[6/6] 构建并启动服务...${NC}"
+# 步骤 6: 预拉取基础镜像
+echo -e "${BLUE}[6/7] 预拉取基础镜像...${NC}"
+echo -e "${YELLOW}[提示] 正在拉取 node、golang、alpine 镜像...${NC}"
+
+# 需要的基础镜像
+BASE_IMAGES=("node:18-alpine" "golang:1.23-alpine" "alpine:3.19")
+
+for IMAGE in "${BASE_IMAGES[@]}"; do
+    echo -e "${BLUE}  拉取 $IMAGE...${NC}"
+    
+    # 尝试直接拉取
+    if docker pull "$IMAGE" 2>/dev/null; then
+        echo -e "${GREEN}  ✓ $IMAGE 拉取成功${NC}"
+        continue
+    fi
+    
+    # 如果失败，尝试使用国内镜像源
+    echo -e "${YELLOW}  直接拉取失败，尝试使用镜像源...${NC}"
+    
+    # 尝试不同的镜像源（优先使用学校网络友好的镜像源）
+    MIRRORS=("docker.m.daocloud.io" "reg-mirror.qiniu.com" "docker.mirrors.ustc.edu.cn" "hub-mirror.c.163.com" "mirror.baidubce.com")
+    SUCCESS=false
+    
+    for MIRROR in "${MIRRORS[@]}"; do
+        MIRROR_IMAGE="$MIRROR/library/$IMAGE"
+        if docker pull "$MIRROR_IMAGE" 2>/dev/null; then
+            docker tag "$MIRROR_IMAGE" "$IMAGE"
+            docker rmi "$MIRROR_IMAGE" 2>/dev/null || true
+            echo -e "${GREEN}  ✓ $IMAGE 拉取成功（通过 $MIRROR）${NC}"
+            SUCCESS=true
+            break
+        fi
+    done
+    
+    if [ "$SUCCESS" = false ]; then
+        echo -e "${RED}  ✗ $IMAGE 拉取失败${NC}"
+        echo -e "${YELLOW}  将在构建时重试...${NC}"
+    fi
+done
+
+echo -e "${GREEN}✓ 镜像预拉取完成${NC}"
+echo ""
+
+# 步骤 7: 构建并启动
+echo -e "${BLUE}[7/7] 构建并启动服务...${NC}"
 echo -e "${YELLOW}[提示] 首次构建需要 6-10 分钟，请耐心等待...${NC}"
 echo ""
 
