@@ -7,24 +7,24 @@ import (
 	"time"
 )
 
-// **Feature: enhanced-aiops-platform, Property 26: 集群部署高可用性**
+// **Feature: enhanced-aiops-platform, Property 26: 集群部署高可用�?*
 // **Validates: Requirements 10.1, 10.3**
 //
 // Property: 对于任何集群部署配置，系统应该支持负载均衡、故障转移和服务恢复
 // 这个属性测试验证以下关键特性：
 // 1. 负载均衡：多个实例之间能够均匀分配请求
-// 2. 故障转移：当实例失败时，系统能够自动切换到健康实例
+// 2. 故障转移：当实例失败时，系统能够自动切换到健康实�?
 // 3. 服务恢复：失败的实例恢复后能够重新加入服务池
 func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
-	// 初始化随机数生成器
+	// 初始化随机数生成�?
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	// Property 1: 服务注册后必须能够被发现
 	t.Run("注册的健康服务必须能够被发现", func(t *testing.T) {
-		// 运行100次随机测试
+		// 运行100次随机测�?
 		for iteration := 0; iteration < 100; iteration++ {
 			serviceName := fmt.Sprintf("test-service-%d", rnd.Intn(1000))
-			instanceCount := rnd.Intn(10) + 1 // 1-10个实例
+			instanceCount := rnd.Intn(10) + 1 // 1-10个实�?
 			registry := NewServiceRegistry()
 			defer registry.Stop()
 
@@ -46,7 +46,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 					return false
 				}
 
-				// 设置为健康状态
+				// 设置为健康状�?
 				registry.UpdateServiceStatus(instance.ID, StatusHealthy)
 				registeredIDs = append(registeredIDs, instance.ID)
 			}
@@ -57,12 +57,12 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 				return false
 			}
 
-			// 验证发现的实例数量正确
+			// 验证发现的实例数量正�?
 			if len(discoveredInstances) != instanceCount {
 				return false
 			}
 
-			// 验证所有注册的实例都在发现列表中
+			// 验证所有注册的实例都在发现列表�?
 			discoveredMap := make(map[string]bool)
 			for _, instance := range discoveredInstances {
 				discoveredMap[instance.ID] = true
@@ -77,11 +77,11 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 			return true
 		},
 		gen.Identifier().SuchThat(func(s string) bool { return len(s) > 0 }),
-		gen.IntRange(1, 10),
+		gen.IntRange(1, 10)gen.IntRange(1, 10),
 	))
 
 	// Property 2: 负载均衡器必须在所有健康实例间分配请求
-	properties.Property("负载均衡器必须覆盖所有健康实例", prop.ForAll(
+	properties.Property("负载均衡器必须覆盖所有健康实�?, prop.ForAll(
 		func(serviceName string, instanceCount int, requestCount int) bool {
 			if instanceCount == 0 || requestCount == 0 {
 				return true // 跳过无效输入
@@ -141,7 +141,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 	properties.Property("不健康的实例不应该被发现和选择", prop.ForAll(
 		func(serviceName string, healthyCount int, unhealthyCount int) bool {
 			if healthyCount == 0 {
-				return true // 至少需要一个健康实例
+				return true // 至少需要一个健康实�?
 			}
 
 			registry := NewServiceRegistry()
@@ -171,7 +171,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 				healthyIDs = append(healthyIDs, instance.ID)
 			}
 
-			// 注册不健康实例
+			// 注册不健康实�?
 			unhealthyIDs := make([]string, 0, unhealthyCount)
 			for i := 0; i < unhealthyCount; i++ {
 				req := &RegistrationRequest{
@@ -203,7 +203,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 				return false
 			}
 
-			// 验证发现的都是健康实例
+			// 验证发现的都是健康实�?
 			for _, instance := range discoveredInstances {
 				found := false
 				for _, healthyID := range healthyIDs {
@@ -243,7 +243,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 	properties.Property("恢复的实例应该重新加入服务池", prop.ForAll(
 		func(serviceName string, instanceCount int) bool {
 			if instanceCount < 2 {
-				return true // 至少需要2个实例来测试恢复
+				return true // 至少需�?个实例来测试恢复
 			}
 
 			registry := NewServiceRegistry()
@@ -273,11 +273,11 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 				instances = append(instances, instance)
 			}
 
-			// 模拟第一个实例失败
+			// 模拟第一个实例失�?
 			failedInstance := instances[0]
 			registry.UpdateServiceStatus(failedInstance.ID, StatusUnhealthy)
 
-			// 清除缓存以获取最新状态
+			// 清除缓存以获取最新状�?
 			client.InvalidateCache(serviceName)
 
 			// 验证失败后的实例数量
@@ -290,7 +290,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 				return false
 			}
 
-			// 恢复失败的实例
+			// 恢复失败的实�?
 			registry.UpdateServiceStatus(failedInstance.ID, StatusHealthy)
 
 			// 清除缓存
@@ -307,7 +307,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 				return false
 			}
 
-			// 验证恢复的实例在列表中
+			// 验证恢复的实例在列表�?
 			found := false
 			for _, instance := range afterRecovery {
 				if instance.ID == failedInstance.ID {
@@ -322,8 +322,8 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 		gen.IntRange(2, 8),
 	))
 
-	// Property 5: 服务注销后不应该被发现
-	properties.Property("注销的服务不应该被发现", prop.ForAll(
+	// Property 5: 服务注销后不应该被发�?
+	properties.Property("注销的服务不应该被发�?, prop.ForAll(
 		func(serviceName string, instanceCount int, deregisterIndex int) bool {
 			if instanceCount == 0 {
 				return true
@@ -357,7 +357,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 				instances = append(instances, instance)
 			}
 
-			// 注销指定的实例
+			// 注销指定的实�?
 			deregisteredInstance := instances[deregisterIndex]
 			err := registry.Deregister(deregisteredInstance.ID)
 			if err != nil {
@@ -389,7 +389,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 	))
 
 	// Property 6: 标签过滤必须正确工作
-	properties.Property("标签过滤必须返回匹配的实例", prop.ForAll(
+	properties.Property("标签过滤必须返回匹配的实�?, prop.ForAll(
 		func(serviceName string, withTagCount int, withoutTagCount int) bool {
 			registry := NewServiceRegistry()
 			defer registry.Stop()
@@ -417,7 +417,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 				registry.UpdateServiceStatus(instance.ID, StatusHealthy)
 			}
 
-			// 注册不带标签的实例
+			// 注册不带标签的实�?
 			for i := 0; i < withoutTagCount; i++ {
 				req := &RegistrationRequest{
 					Name:     serviceName,
@@ -444,7 +444,7 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 				return false
 			}
 
-			// 验证返回的实例数量
+			// 验证返回的实例数�?
 			if len(taggedInstances) != withTagCount {
 				return false
 			}
@@ -470,16 +470,16 @@ func TestServiceDiscoveryHighAvailabilityProperty(t *testing.T) {
 		gen.IntRange(0, 5),
 	))
 
-	// 运行所有属性测试，每个属性测试100次
+	// 运行所有属性测试，每个属性测�?00�?
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
 }
 
-// TestServiceDiscoveryConsistencyProperty 测试服务发现的一致性属性
+// TestServiceDiscoveryConsistencyProperty 测试服务发现的一致性属�?
 func TestServiceDiscoveryConsistencyProperty(t *testing.T) {
 	properties := gopter.NewProperties(nil)
 
-	// Property: 并发注册和发现必须保持一致性
-	properties.Property("并发操作必须保持数据一致性", prop.ForAll(
+	// Property: 并发注册和发现必须保持一致�?
+	properties.Property("并发操作必须保持数据一致�?, prop.ForAll(
 		func(serviceName string, operationCount int) bool {
 			if operationCount == 0 {
 				return true
@@ -513,7 +513,7 @@ func TestServiceDiscoveryConsistencyProperty(t *testing.T) {
 				}(i)
 			}
 
-			// 等待所有注册完成
+			// 等待所有注册完�?
 			for i := 0; i < operationCount; i++ {
 				<-done
 			}
@@ -525,7 +525,7 @@ func TestServiceDiscoveryConsistencyProperty(t *testing.T) {
 				expectedIDs[id] = true
 			}
 
-			// 验证所有注册的实例都能被发现
+			// 验证所有注册的实例都能被发�?
 			discoveredInstances, err := registry.Discover(serviceName)
 			if err != nil {
 				return false
@@ -535,7 +535,7 @@ func TestServiceDiscoveryConsistencyProperty(t *testing.T) {
 				return false
 			}
 
-			// 验证发现的实例ID都在预期列表中
+			// 验证发现的实例ID都在预期列表�?
 			for _, instance := range discoveredInstances {
 				if !expectedIDs[instance.ID] {
 					return false
