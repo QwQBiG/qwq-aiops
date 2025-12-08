@@ -1,35 +1,143 @@
-# qwq AIOps Platform
+# qwq AIOps - AI-Powered Intelligent Operations Platform
 
 <div align="center">
 
-**AI-Powered Intelligent Operations Platform**
+![qwq AIOps](https://img.shields.io/badge/qwq-AIOps-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.0-green?style=for-the-badge)
+![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go)](https://go.dev/)
-[![Vue Version](https://img.shields.io/badge/Vue-3.x-4FC08D?logo=vue.js)](https://vuejs.org/)
-[![Docker](https://img.shields.io/badge/Docker-20.10+-2496ED?logo=docker)](https://www.docker.com/)
+English | **[简体中文](./README.md)**
 
-English | [简体中文](README.md)
+A modern AI-powered intelligent operations platform providing container management, system monitoring, and automated operations
+
+[Quick Start](#quick-start) • [Features](#features) • [Deployment](#deployment) • [Documentation](#documentation)
 
 </div>
 
+---
+
+## 📖 Table of Contents
+
+- [Introduction](#introduction)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Deployment Guide](#deployment-guide)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
+- [Development](#development)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## 🎯 Introduction
+
+qwq AIOps is a modern intelligent operations platform that combines AI technology with traditional DevOps tools, providing enterprises with:
+
+- 🤖 **AI-Driven Analysis** - Automatically analyze system anomalies and provide solutions
+- 🐳 **Container Management** - Complete Docker container lifecycle management
+- 📊 **Real-time Monitoring** - Monitor system resources, service status, and performance metrics
+- 🔔 **Smart Alerts** - Multi-channel notifications (DingTalk, WeChat, Email, etc.)
+- 🚀 **One-Click Deployment** - Complete automation scripts, get started in 5 minutes
+- 🌐 **Modern UI** - Responsive web interface built with Vue 3 + Element Plus
+
+---
+
 ## ✨ Features
 
-- 🤖 **AI-Powered Diagnostics** - Intelligent problem analysis and solution recommendations based on OpenAI/Ollama
-- 📊 **Real-time Monitoring** - System resources, service status, and container health monitoring
-- 🔔 **Smart Alerts** - Automatic anomaly detection with notifications via DingTalk/WeChat/Email
-- 🐳 **Container Management** - Docker container start, stop, restart, and log viewing
-- 📈 **Visualization Dashboard** - Prometheus + Grafana monitoring visualization
-- 🔐 **Secure & Reliable** - JWT authentication, data encryption, access control
-- 🚀 **One-Click Deployment** - Docker Compose one-click deployment, ready to use
+### Core Capabilities
 
-## 🎯 Quick Start
+| Module | Description | Status |
+|--------|-------------|--------|
+| 🎛️ **System Monitoring** | Real-time CPU, memory, disk, network monitoring | ✅ Complete |
+| 🐳 **Container Management** | Docker container start, stop, restart, log viewing | ✅ Complete |
+| 🌐 **Website Monitoring** | HTTP/HTTPS health checks and response time monitoring | ✅ Complete |
+| 💾 **Database Management** | MySQL, PostgreSQL, Redis management | ✅ Complete |
+| 📦 **App Store** | One-click deployment of common apps (WordPress, MySQL, etc.) | ✅ Complete |
+| 📁 **File Management** | Online file browsing, editing, upload/download | ✅ Complete |
+| 💬 **AI Terminal** | Intelligent CLI assistant, natural language operations | ✅ Complete |
+| 📊 **Visualization** | Prometheus + Grafana integration | ✅ Complete |
+| 🔔 **Alert Notifications** | DingTalk, WeChat, Slack, Email multi-channel | ✅ Complete |
+| 👥 **Multi-tenancy** | Tenant isolation, permission management | ✅ Complete |
+
+### AI Capabilities
+
+- **Intelligent Anomaly Analysis** - Automatically analyze system logs and metrics
+- **Solution Recommendations** - Provide fixes based on historical data and best practices
+- **Natural Language Interaction** - Execute operations commands through conversation
+- **Automated Script Generation** - Generate operations scripts based on requirements
+
+### Supported AI Services
+
+- ✅ **OpenAI** (GPT-3.5/GPT-4)
+- ✅ **Ollama** (Local deployment, completely free)
+- ✅ **Custom API** (OpenAI-compatible format)
+
+---
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Frontend Layer (Vue 3)                   │
+│  Element Plus UI • Vue Router • Pinia • ECharts • Axios     │
+└─────────────────────────────────────────────────────────────┘
+                              ↓ HTTP/WebSocket
+┌─────────────────────────────────────────────────────────────┐
+│                    API Gateway Layer (Go)                   │
+│      Routing • Auth • Rate Limiting • Logging • Errors      │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   Business Logic Layer (Go)                 │
+│  Container Mgmt • Monitoring • AI Analysis • Alerts • Jobs  │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                      Data Storage Layer                     │
+│    SQLite/MySQL • Redis • Prometheus • File System          │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    Infrastructure Layer                     │
+│         Docker • Kubernetes • Linux • Cloud Providers       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Tech Stack
+
+**Backend**
+- Go 1.23+ - High-performance backend service
+- Gin - Web framework
+- GORM - ORM framework
+- Docker SDK - Container management
+- Prometheus Client - Metrics collection
+
+**Frontend**
+- Vue 3 - Progressive frontend framework
+- Element Plus - UI component library
+- ECharts - Data visualization
+- Vite - Build tool
+- Pinia - State management
+
+**Infrastructure**
+- Docker & Docker Compose - Containerized deployment
+- Prometheus - Monitoring data collection
+- Grafana - Visualization dashboard
+- MySQL/SQLite - Data storage
+- Redis - Cache and queue
+
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
 - Docker 20.10+
 - Docker Compose V2
-- 4GB+ available memory
+- 2GB+ available memory
 - 10GB+ available disk space
 
 ### One-Click Deployment
@@ -39,168 +147,57 @@ English | [简体中文](README.md)
 git clone https://github.com/QwQBiG/qwq-aiops.git
 cd qwq-aiops
 
-# 2. Configure AI service (Required)
+# 2. Configure environment variables
 cp .env.example .env
-nano .env  # Edit configuration
+nano .env  # Edit configuration file
 
 # 3. Run deployment script
 chmod +x deploy.sh
 ./deploy.sh
-
-# Or use simplified script
-chmod +x start.sh
-./start.sh
 ```
 
-**Windows Users**:
-```bash
-start.bat
-```
+The deployment script will automatically:
+- ✅ Check environment (Docker, ports, disk space)
+- ✅ Validate configuration (AI service, database, etc.)
+- ✅ Build images (frontend + backend)
+- ✅ Start services (all containers)
+- ✅ Health check (ensure services are running)
 
-### AI Configuration
-
-qwq is an AI-driven platform and requires AI service configuration.
-
-#### Option 1: OpenAI API (Recommended for beginners)
-
-Edit `.env` file:
-
-```bash
-AI_PROVIDER=openai
-OPENAI_API_KEY=sk-your-api-key-here
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-3.5-turbo
-```
-
-#### Option 2: Ollama Local Model (Recommended for enterprises)
-
-```bash
-# 1. Install Ollama
-curl -fsSL https://ollama.com/install.sh | sh
-
-# 2. Download model
-ollama pull qwen2.5:7b
-
-# 3. Edit .env
-AI_PROVIDER=ollama
-OLLAMA_HOST=http://host.docker.internal:11434
-OLLAMA_MODEL=qwen2.5:7b
-```
-
-### Access System
+### Access Services
 
 After successful deployment, access:
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| Web UI | http://localhost:8081 | Main interface |
-| API Docs | http://localhost:8081/api/docs | Swagger documentation |
-| Prometheus | http://localhost:9091 | Monitoring metrics |
-| Grafana | http://localhost:3000 | Visualization dashboard |
+| Service | URL | Default Credentials |
+|---------|-----|-------------------|
+| 🎛️ **Main Console** | http://localhost:8081 | - |
+| 📊 **Prometheus** | http://localhost:9091 | - |
+| 📈 **Grafana** | http://localhost:3000 | admin / admin |
 
-**Default Credentials**:
-- Username: `admin`
-- Password: `admin123`
+---
 
-## 📖 Documentation
+## 📦 Deployment Guide
 
-- [Quick Start](快速开始.md) - 5-minute quick start guide
-- [Deployment Guide](docs/deployment-guide.md) - Detailed deployment instructions
-- [User Manual](docs/user-manual.md) - Feature usage guide
-- [API Documentation](http://localhost:8081/api/docs) - RESTful API docs
-- [FAQ](docs/faq.md) - Frequently asked questions
+### Method 1: Docker Compose (Recommended)
 
-## 🏗️ Architecture
-
-```
-                    ┌─────────────────────────────┐
-                    │    Frontend (Vue 3)          │
-                    │  Dashboard | Container Mgmt  │
-                    │  AI Diag   | Settings         │
-                    └─────────────┬───────────────┘
-                                  │
-                                  ▼
-                    ┌─────────────────────────────┐
-                    │    Backend API (Go)          │
-                    │  Web Server | AI Agent       │
-                    │  Monitor    | Alerting       │
-                    └─────────────┬───────────────┘
-                                  │
-            ┌─────────────────────┼─────────────────────┐
-            ▼                     ▼                     ▼
-    ┌──────────────┐      ┌──────────────┐    ┌──────────────┐
-    │    MySQL     │      │    Redis     │    │  Prometheus  │
-    │  Data Store  │      │    Cache     │    │   Metrics    │
-    └──────────────┘      └──────────────┘    └──────────────┘
-```
-
-## 🔧 Tech Stack
-
-### Backend
-- **Language**: Go 1.23+
-- **Framework**: Cobra (CLI), Gorilla (WebSocket)
-- **AI**: OpenAI API / Ollama
-- **Database**: SQLite / MySQL / PostgreSQL
-- **Cache**: Redis
-- **Monitoring**: Prometheus
-
-### Frontend
-- **Framework**: Vue 3 + Vite
-- **UI**: Element Plus
-- **Charts**: ECharts
-- **Editor**: Monaco Editor
-- **State**: Pinia
-
-### DevOps
-- **Container**: Docker + Docker Compose
-- **Reverse Proxy**: Nginx (optional)
-- **Monitoring**: Prometheus + Grafana
-
-## 📊 Features
-
-### 1. AI Diagnostics
-- AI-powered problem analysis
-- Automatic solution generation
-- Command execution suggestions
-- Knowledge base integration
-
-### 2. System Monitoring
-- Real-time CPU, memory, disk monitoring
-- Load and network connection monitoring
-- Custom monitoring rules
-- Historical data queries
-
-### 3. Container Management
-- Docker container listing
-- Container start/stop/restart
-- Real-time log viewing
-- Container resource monitoring
-
-### 4. Alert Notifications
-- DingTalk bot
-- WeChat Work bot
-- Email notifications
-- Slack integration
-
-### 5. Automatic Inspection
-- Scheduled system inspection
-- Automatic anomaly detection
-- AI analysis reports
-- Daily health reports
-
-## 🚀 Deployment Options
-
-### Docker Compose (Recommended)
+Suitable for quick experience and small-scale deployment.
 
 ```bash
-# Quick start
+# Full deployment (all services)
 ./deploy.sh
 
-# Or manual start
-docker compose up -d --build
+# Quick rebuild (after code updates)
+./rebuild.sh
+
+# View logs
+docker compose logs -f qwq
+
+# Stop services
+docker compose down
 ```
 
-### Manual Deployment
+### Method 2: Manual Deployment
+
+Suitable for custom configuration and production environments.
 
 ```bash
 # 1. Build frontend
@@ -210,124 +207,363 @@ npm run build
 
 # 2. Build backend
 cd ..
+go mod download
 go build -o qwq ./cmd/qwq/main.go
 
-# 3. Run
+# 3. Run service
 ./qwq web
 ```
 
-### Kubernetes
+### Method 3: Kubernetes Deployment
+
+Suitable for large-scale production environments.
 
 ```bash
-# Using Helm Chart
-helm install qwq ./charts/qwq
+# Deploy using Helm Chart
+helm install qwq-aiops ./charts/qwq-aiops
 
-# Or using kubectl
+# Or use kubectl
 kubectl apply -f k8s/
 ```
+
+---
 
 ## ⚙️ Configuration
 
 ### Environment Variables
 
-| Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
-| `PORT` | Service port | 8080 | No |
-| `AI_PROVIDER` | AI provider (openai/ollama) | - | Yes |
-| `OPENAI_API_KEY` | OpenAI API Key | - | Conditional |
-| `OLLAMA_HOST` | Ollama service URL | http://localhost:11434 | Conditional |
-| `DB_TYPE` | Database type | sqlite | No |
-| `JWT_SECRET` | JWT secret key | - | Yes |
+Edit `.env` file for configuration:
 
-See [.env.example](.env.example) for complete configuration.
+```bash
+# ============================================
+# Basic Configuration
+# ============================================
+PORT=8080                    # Service port
+ENVIRONMENT=production       # Runtime environment
+LOG_LEVEL=info              # Log level
 
-### Port Mapping
+# ============================================
+# AI Configuration (Required)
+# ============================================
 
-| Port | Service | Description |
-|------|---------|-------------|
-| 8081 | qwq Main | Frontend + API |
-| 3308 | MySQL | Database |
-| 6380 | Redis | Cache |
-| 9091 | Prometheus | Monitoring |
-| 3000 | Grafana | Visualization |
+# Option 1: Use OpenAI
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-your-api-key-here
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-3.5-turbo
 
-## 🔒 Security Recommendations
+# Option 2: Use Ollama (Recommended, Free)
+AI_PROVIDER=ollama
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
 
-### Production Deployment
+# ============================================
+# Notification Configuration
+# ============================================
+DINGTALK_WEBHOOK=https://oapi.dingtalk.com/robot/send?access_token=xxx
+WECHAT_WEBHOOK=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
+SLACK_WEBHOOK=https://hooks.slack.com/services/xxx
 
-1. **Change Default Passwords**
-   ```bash
-   # Modify secrets in .env
-   JWT_SECRET=$(openssl rand -base64 32)
-   ENCRYPTION_KEY=$(openssl rand -base64 32)
-   ```
+# ============================================
+# Database Configuration
+# ============================================
+DB_TYPE=sqlite              # sqlite, mysql, postgresql
+DB_PATH=./data/qwq.db      # SQLite database path
 
-2. **Enable HTTPS**
-   ```bash
-   # Use Nginx reverse proxy
-   # Configure SSL certificates
-   ```
+# MySQL Configuration (Optional)
+# DB_HOST=localhost
+# DB_PORT=3306
+# DB_USER=qwq
+# DB_PASSWORD=your-password
+# DB_NAME=qwq
 
-3. **Configure Firewall**
-   ```bash
-   # Only open necessary ports
-   ufw allow 80/tcp
-   ufw allow 443/tcp
-   ```
+# ============================================
+# Security Configuration
+# ============================================
+JWT_SECRET=change-this-to-random-secret
+ENCRYPTION_KEY=change-this-to-32-byte-key
 
-4. **Regular Backups**
-   ```bash
-   # Configure automatic backups
-   BACKUP_ENABLED=true
-   BACKUP_SCHEDULE="0 2 * * *"
-   ```
+# Web Authentication (Optional)
+WEB_USER=admin
+WEB_PASSWORD=admin123
+```
+
+### Ollama Configuration in Docker
+
+If your Ollama runs in Docker, special configuration is needed:
+
+```bash
+# Linux environment
+OLLAMA_HOST=http://172.17.0.1:11434  # Docker bridge IP
+
+# Or use host IP
+OLLAMA_HOST=http://your-server-ip:11434
+
+# Or add Ollama to the same network
+docker network connect qwqops_qwq-network ollama
+OLLAMA_HOST=http://ollama:11434
+```
+
+---
+
+## 📚 Documentation
+
+### System Monitoring
+
+View real-time system resource usage:
+
+- **CPU Load** - System load average
+- **Memory Usage** - Used/Total memory, usage rate
+- **Disk Space** - Usage of each partition
+- **Network Connections** - TCP connection statistics
+
+### Container Management
+
+Manage Docker containers:
+
+```bash
+# Operations in Web UI
+1. Go to "Container Management" page
+2. View all container statuses
+3. Click "Start/Stop/Restart" buttons
+4. View container logs
+```
+
+### AI Terminal
+
+Execute operations tasks using natural language:
+
+```
+You: Check system load
+AI: Executing uptime command...
+    System uptime: 5 days 3 hours
+    Load: 0.5, 0.6, 0.7
+
+You: Restart nginx container
+AI: Executing docker restart nginx...
+    Container restarted
+```
+
+### Alert Configuration
+
+Configure automatic alert rules:
+
+1. Edit `.env` file, configure notification channels
+2. System automatically monitors:
+   - Disk usage > 85%
+   - System load > 4.0
+   - Out of memory (OOM)
+   - Service anomalies
+3. Automatically push notifications when alerts trigger
+
+---
+
+## 🛠️ Development
+
+### Local Development Environment
+
+```bash
+# 1. Start backend (development mode)
+go run cmd/qwq/main.go web
+
+# 2. Start frontend (development mode)
+cd frontend
+npm run dev
+
+# 3. Access development servers
+# Frontend: http://localhost:5173
+# Backend: http://localhost:8080
+```
+
+### Project Structure
+
+```
+qwq-aiops/
+├── cmd/                    # CLI entry points
+│   └── qwq/
+│       └── main.go       # Main program entry
+├── internal/             # Internal packages
+│   ├── agent/            # AI agent
+│   ├── config/           # Configuration management
+│   ├── container/        # Container management
+│   ├── gateway/          # API gateway
+│   ├── monitor/          # Monitoring collection
+│   ├── notify/           # Notification push
+│   └── server/           # Web server
+├── frontend/             # Frontend project
+│   ├── src/
+│   │   ├── views/        # Page components
+│   │   ├── router/       # Router configuration
+│   │   ├── i18n/         # Internationalization
+│   │   └── main.js       # Entry file
+│   └── vite.config.js    # Vite configuration
+├── config/               # Configuration files
+│   ├── prometheus.yml    # Prometheus config
+│   └── mysql.cnf         # MySQL config
+├── docs/                 # Documentation
+├── docker-compose.yml    # Docker Compose config
+├── Dockerfile            # Docker image build
+├── deploy.sh             # Deployment script
+├── rebuild.sh            # Rebuild script
+└── .env.example          # Environment variables example
+```
+
+### Adding New Features
+
+1. **Backend API**
+```go
+// internal/server/server.go
+http.HandleFunc("/api/your-endpoint", basicAuth(handleYourEndpoint))
+
+func handleYourEndpoint(w http.ResponseWriter, r *http.Request) {
+    // Implementation logic
+}
+```
+
+2. **Frontend Page**
+```vue
+<!-- frontend/src/views/YourPage.vue -->
+<template>
+  <div>Your Page Content</div>
+</template>
+
+<script setup>
+// Page logic
+</script>
+```
+
+3. **Router Configuration**
+```javascript
+// frontend/src/router/index.js
+{
+  path: '/your-page',
+  name: 'YourPage',
+  component: () => import('../views/YourPage.vue')
+}
+```
+
+---
+
+## ❓ FAQ
+
+### 1. Port Already in Use
+
+```bash
+# Check port usage
+lsof -i :8081
+
+# Change port
+# Edit docker-compose.yml, modify ports configuration
+ports:
+  - "8082:8080"  # Change to 8082
+```
+
+### 2. AI Service Connection Failed
+
+```bash
+# Check if Ollama is running
+curl http://localhost:11434/api/tags
+
+# Check network connection
+docker compose exec qwq ping 172.17.0.1
+
+# View logs
+docker compose logs qwq | grep AI
+```
+
+### 3. Frontend Page Blank
+
+```bash
+# Clear browser cache
+Ctrl + Shift + Delete
+
+# Force refresh
+Ctrl + F5
+
+# Check console errors
+F12 -> Console
+```
+
+### 4. Container Build Failed
+
+```bash
+# Clean Docker cache
+docker system prune -a
+
+# Rebuild
+./rebuild.sh
+
+# View build logs
+docker compose build --no-cache --progress=plain
+```
+
+### 5. Database Connection Failed
+
+```bash
+# Check MySQL container status
+docker compose ps mysql
+
+# View MySQL logs
+docker compose logs mysql
+
+# Reset database
+docker compose down -v
+docker compose up -d
+```
+
+---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit issues or pull requests.
+Contributions, issues, and feature requests are welcome!
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+### Contribution Process
 
-## 📝 Changelog
+1. Fork this repository
+2. Create feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open Pull Request
 
-### v1.0.0 (2024-12-08)
+### Code Standards
 
-- ✨ Initial release
-- 🤖 OpenAI and Ollama AI integration
-- 📊 Complete monitoring and alerting system
-- 🐳 Docker container management
-- 📈 Prometheus + Grafana integration
-- 🔐 JWT authentication and access control
+- **Go Code** - Follow [Effective Go](https://golang.org/doc/effective_go)
+- **Vue Code** - Follow [Vue Style Guide](https://vuejs.org/style-guide/)
+- **Commit Messages** - Follow [Conventional Commits](https://www.conventionalcommits.org/)
+
+---
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+---
+
 ## 🙏 Acknowledgments
 
-- [OpenAI](https://openai.com/) - AI capabilities
-- [Ollama](https://ollama.com/) - Local AI models
-- [Vue.js](https://vuejs.org/) - Frontend framework
-- [Go](https://go.dev/) - Backend language
-- [Docker](https://www.docker.com/) - Containerization
+Thanks to these open source projects:
+
+- [Vue.js](https://vuejs.org/) - Progressive JavaScript framework
+- [Element Plus](https://element-plus.org/) - Vue 3 component library
+- [Go](https://golang.org/) - Efficient programming language
+- [Docker](https://www.docker.com/) - Containerization platform
 - [Prometheus](https://prometheus.io/) - Monitoring system
+- [Ollama](https://ollama.ai/) - Local AI model runtime
+
+---
 
 ## 📞 Contact
 
-- Project Homepage: https://github.com/QwQBiG/qwq-aiops
-- Issue Tracker: https://github.com/QwQBiG/qwq-aiops/issues
-- Documentation: https://github.com/QwQBiG/qwq-aiops/wiki
+- **Issue Reports**: [GitHub Issues](https://github.com/QwQBiG/qwq-aiops/issues)
+- **Feature Requests**: [GitHub Discussions](https://github.com/QwQBiG/qwq-aiops/discussions)
+- **Email**: support@qwq-aiops.com
 
 ---
 
 <div align="center">
 
-**If this project helps you, please give it a ⭐️ Star!**
+**[⬆ Back to Top](#qwq-aiops---ai-powered-intelligent-operations-platform)**
 
-Made with ❤️ by qwq Team
+Made with ❤️ by qwqBiG.
 
 </div>

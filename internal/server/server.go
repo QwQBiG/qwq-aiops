@@ -99,43 +99,63 @@ func Start(port string) {
 	// 注意：必须在所有 API 路由之后注册，确保 API 路由优先匹配
 	distFS, err := fs.Sub(frontendDist, "dist")
 	if err != nil {
+		// 前端资源加载失败，返回错误提示页面
 		logger.Info("⚠️ 前端资源加载异常: %v", err)
-	} else {
-		// 注册根路径处理器，处理所有前端请求
-		// 支持 Vue Router 的 HTML5 History 模式
 		http.HandleFunc("/", basicAuth(func(w http.ResponseWriter, r *http.Request) {
-			// 尝试打开请求的文件
+			http.Error(w, "前端资源未找到，请检查构建是否成功", http.StatusNotFound)
+		}))
+	} else {
+		// 创建 SPA 单页应用处理器
+		// 支持 Vue Router 的 HTML5 History 模式
+		spaHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// 获取请求路径，去除前导斜杠
 			path := strings.TrimPrefix(r.URL.Path, "/")
 			if path == "" {
 				path = "index.html"
 			}
 			
-			file, err := distFS.Open(path)
+			// 检查文件是否存在
+			_, err := distFS.Open(path)
 			if err != nil {
-				// 文件不存在，返回 index.html（支持 SPA 路由）
-				indexFile, err := distFS.Open("index.html")
-				if err != nil {
-					http.Error(w, "index.html not found", http.StatusNotFound)
-					return
-				}
-				defer indexFile.Close()
-				
-				// 读取 index.html 内容
-				content, err := fs.ReadFile(distFS, "index.html")
-				if err != nil {
-					http.Error(w, "Failed to read index.html", http.StatusInternalServerError)
-					return
-				}
-				
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.Write(content)
+				// 文件不存在时返回 index.html，支持前端路由
+				// 这样 /dashboard、/containers 等路由都会返回 index.html
+				// 由 Vue Router 在客户端处理路由
+				path = "index.html"
+			}
+			
+			// 读取文件内容
+			content, err := fs.ReadFile(distFS, path)
+			if err != nil {
+				http.Error(w, "文件读取失败: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-			defer file.Close()
 			
-			// 文件存在，使用标准文件服务器处理
-			http.FileServer(http.FS(distFS)).ServeHTTP(w, r)
-		}))
+			// 根据文件扩展名设置正确的 Content-Type
+			// 确保浏览器正确解析文件类型
+			contentType := "text/html; charset=utf-8"
+			if strings.HasSuffix(path, ".js") {
+				contentType = "application/javascript; charset=utf-8"
+			} else if strings.HasSuffix(path, ".css") {
+				contentType = "text/css; charset=utf-8"
+			} else if strings.HasSuffix(path, ".json") {
+				contentType = "application/json; charset=utf-8"
+			} else if strings.HasSuffix(path, ".png") {
+				contentType = "image/png"
+			} else if strings.HasSuffix(path, ".jpg") || strings.HasSuffix(path, ".jpeg") {
+				contentType = "image/jpeg"
+			} else if strings.HasSuffix(path, ".svg") {
+				contentType = "image/svg+xml"
+			} else if strings.HasSuffix(path, ".ico") {
+				contentType = "image/x-icon"
+			}
+			
+			// 设置响应头并返回文件内容
+			w.Header().Set("Content-Type", contentType)
+			w.Write(content)
+		})
+		
+		// 注册根路径处理器，应用身份验证中间件
+		http.HandleFunc("/", basicAuth(spaHandler))
 	}
 
 	// 获取实际端口号（去掉冒号）

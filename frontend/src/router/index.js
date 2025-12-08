@@ -58,8 +58,13 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory('/'),
   routes
+})
+
+// 路由错误处理
+router.onError((error) => {
+  console.error('Router Error:', error)
 })
 
 export default router

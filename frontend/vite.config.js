@@ -22,10 +22,24 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // 手动分包，优化加载性能
-        manualChunks: {
-          'element-plus': ['element-plus'],                    // UI 组件库单独打包
-          'vue-vendor': ['vue', 'vue-router', 'pinia'],       // Vue 核心库单独打包
-          'echarts': ['echarts']                               // 图表库单独打包
+        manualChunks(id) {
+          // node_modules 中的包按目录分组
+          if (id.includes('node_modules')) {
+            // Element Plus 相关（包括图标和依赖）
+            if (id.includes('element-plus') || id.includes('@element-plus')) {
+              return 'element-plus'
+            }
+            // Vue 核心生态
+            if (id.includes('vue') || id.includes('pinia') || id.includes('@vue')) {
+              return 'vue-vendor'
+            }
+            // ECharts 图表库
+            if (id.includes('echarts') || id.includes('zrender')) {
+              return 'echarts'
+            }
+            // 其他第三方库
+            return 'vendor'
+          }
         }
       }
     }
