@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -77,8 +78,18 @@ func (gs *GatewayServer) GetGateway() *Gateway {
 
 // registerDefaultServices 注册默认服务
 func (gs *GatewayServer) registerDefaultServices() {
-	// 注册现有的Web服务作为默认服务
-	gs.gateway.RegisterService("web-ui", "http://localhost:8899", "http://localhost:8899/health", "1.0")
+	// 从环境变量读取主服务端口，默认 8080
+	// Docker 环境中通过 PORT 环境变量统一配置
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	baseURL := fmt.Sprintf("http://localhost:%s", port)
+	
+	// 注册 Web UI 服务（主服务）
+	gs.gateway.RegisterService("web-ui", baseURL, baseURL+"/health", "1.0")
+	
+	// 注册微服务（预留端口，实际部署时可能不启用）
 	gs.gateway.RegisterService("ai-agent", "http://localhost:8900", "http://localhost:8900/health", "1.0")
 	gs.gateway.RegisterService("app-store", "http://localhost:8901", "http://localhost:8901/health", "1.0")
 	gs.gateway.RegisterService("container-service", "http://localhost:8902", "http://localhost:8902/health", "1.0")
@@ -87,7 +98,7 @@ func (gs *GatewayServer) registerDefaultServices() {
 	gs.gateway.RegisterService("backup-service", "http://localhost:8905", "http://localhost:8905/health", "1.0")
 	gs.gateway.RegisterService("monitoring", "http://localhost:8906", "http://localhost:8906/health", "1.0")
 
-	// 添加路由规则
+	// 配置 API 路由规则（路径前缀 -> 服务映射）
 	gs.gateway.AddRoute("/api/v1/ai/", "ai-agent", []string{"GET", "POST"})
 	gs.gateway.AddRoute("/api/v1/apps/", "app-store", []string{"GET", "POST", "PUT", "DELETE"})
 	gs.gateway.AddRoute("/api/v1/containers/", "container-service", []string{"GET", "POST", "PUT", "DELETE"})
@@ -96,13 +107,11 @@ func (gs *GatewayServer) registerDefaultServices() {
 	gs.gateway.AddRoute("/api/v1/backups/", "backup-service", []string{"GET", "POST", "PUT", "DELETE"})
 	gs.gateway.AddRoute("/api/v1/monitoring/", "monitoring", []string{"GET", "POST"})
 	
-	// 兼容现有API路径
+	// 兼容现有 API 路径（转发到主服务）
 	gs.gateway.AddRoute("/api/", "web-ui", []string{"GET", "POST", "PUT", "DELETE"})
-	gs.gateway.AddRoute("/ws/", "web-ui", []string{"GET"})
-	gs.gateway.AddRoute("/assets/", "web-ui", []string{"GET"})
-	gs.gateway.AddRoute("/", "web-ui", []string{"GET"})
-
-	// Default services and routes registered
+	gs.gateway.AddRoute("/ws/", "web-ui", []string{"GET"})        // WebSocket 连接
+	gs.gateway.AddRoute("/assets/", "web-ui", []string{"GET"})    // 静态资源
+	gs.gateway.AddRoute("/", "web-ui", []string{"GET"})           // 首页
 }
 
 // RegisterService 注册新服务的便捷方法

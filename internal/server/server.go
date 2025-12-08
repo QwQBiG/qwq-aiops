@@ -96,7 +96,9 @@ func Start(port string) {
 
 	http.HandleFunc("/ws/chat", basicAuth(handleWSChat))
 
-	logger.Info("🚀 qwq Dashboard started at http://localhost" + port)
+	// 获取实际端口号（去掉冒号）
+	displayPort := strings.TrimPrefix(port, ":")
+	logger.Info("🚀 qwq Dashboard started at http://localhost:%s", displayPort)
 	if config.GlobalConfig.WebUser != "" {
 		logger.Info("🔒 安全模式已开启 (Basic Auth)")
 	}

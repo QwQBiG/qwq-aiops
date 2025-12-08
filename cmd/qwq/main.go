@@ -76,19 +76,46 @@ func main() {
 	}
 }
 
+// runWebMode 启动 Web 控制台模式
+// 提供可视化界面和 API 服务，支持通过环境变量 PORT 自定义端口
 func runWebMode(cmd *cobra.Command, args []string) {
+	// 注册巡检和状态推送回调函数
 	server.TriggerPatrolFunc = performPatrol
 	server.TriggerStatusFunc = sendSystemStatus
-	// 启动定时任务（包含启动时的日报发送）
+	
+	// 启动后台定时任务：每 8 小时执行一次巡检和日报
 	go runPatrolLoop(8 * time.Hour)
-	server.Start(":8899")
+	
+	// 从环境变量读取服务端口，默认使用 8080
+	// 可通过 docker-compose.yml 或 .env 文件配置
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	
+	// 启动 HTTP 服务器
+	server.Start(":" + port)
 }
 
+// runGatewayMode 启动 API 网关模式
+// 提供统一的 API 入口，支持服务发现、负载均衡和路由转发
 func runGatewayMode(cmd *cobra.Command, args []string) {
 	logger.Info("🚀 启动增强版 API Gateway 模式")
 	
+	// 从环境变量读取网关端口，默认 8080
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	
+	// 从环境变量读取 Web UI 端口，默认 8899
+	webUIPort := os.Getenv("WEB_UI_PORT")
+	if webUIPort == "" {
+		webUIPort = "8899"
+	}
+	
 	// 创建增强版网关服务器
-	gatewayServer := gateway.NewEnhancedGatewayServer(":8080")
+	gatewayServer := gateway.NewEnhancedGatewayServer(":" + port)
 	
 	// 添加文档路由
 	gatewayServer.GetGateway().AddDocsRoutes()
@@ -100,8 +127,8 @@ func runGatewayMode(cmd *cobra.Command, args []string) {
 	
 	// 启动原有Web服务（作为微服务之一）
 	go func() {
-		logger.Info("启动 Web UI 服务在端口 :8899")
-		server.Start(":8899")
+		logger.Info("启动 Web UI 服务在端口 :%s", webUIPort)
+		server.Start(":" + webUIPort)
 	}()
 	
 	// 等待服务启动

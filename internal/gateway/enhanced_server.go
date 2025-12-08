@@ -94,6 +94,14 @@ func (egs *EnhancedGatewayServer) Stop() error {
 
 // registerDefaultServices 注册默认服务到服务注册中心
 func (egs *EnhancedGatewayServer) registerDefaultServices() {
+	// 从环境变量读取主服务端口
+	mainPort := 8080
+	if portStr := os.Getenv("PORT"); portStr != "" {
+		if p, err := strconv.Atoi(portStr); err == nil {
+			mainPort = p
+		}
+	}
+	
 	defaultServices := []struct {
 		name    string
 		address string
@@ -102,7 +110,7 @@ func (egs *EnhancedGatewayServer) registerDefaultServices() {
 		version string
 		tags    []string
 	}{
-		{"web-ui", "localhost", 8899, "/health", "1.0", []string{"ui", "frontend"}},
+		{"web-ui", "localhost", mainPort, "/health", "1.0", []string{"ui", "frontend"}},
 		{"ai-agent", "localhost", 8900, "/health", "1.0", []string{"ai", "backend"}},
 		{"app-store", "localhost", 8901, "/health", "1.0", []string{"apps", "backend"}},
 		{"container-service", "localhost", 8902, "/health", "1.0", []string{"containers", "backend"}},
