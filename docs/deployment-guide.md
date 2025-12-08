@@ -61,7 +61,7 @@ sudo ./一键部署.sh
 # 3. 访问系统
 # 前端界面: http://localhost:8081
 # API 文档: http://localhost:8081/api/docs
-# Prometheus: http://localhost:9090
+# Prometheus: http://localhost:9091
 # Grafana: http://localhost:3000
 # 默认账号: admin / admin123
 ```
@@ -312,7 +312,7 @@ AI_BASE_URL=https://api.openai.com/v1
 
 # 监控配置
 MONITORING_ENABLED=true
-PROMETHEUS_PORT=9090
+PROMETHEUS_PORT=9091
 
 # 日志配置
 LOG_LEVEL=info
@@ -363,7 +363,7 @@ ai:
 
 monitoring:
   enabled: true
-  prometheus_port: 9090
+  prometheus_port: 9091
   metrics_interval: 60
   alert_enabled: true
 
