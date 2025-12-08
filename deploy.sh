@@ -191,10 +191,13 @@ check_configuration() {
             fi
         elif [ "$ai_provider" = "ollama" ]; then
             echo -e "${GREEN}✓ Ollama 配置已设置${NC}"
-            if command -v ollama &> /dev/null; then
-                echo -e "${GREEN}✓ Ollama 已安装${NC}"
+            # 检查 OLLAMA_HOST 配置
+            if grep -q "^OLLAMA_HOST=" .env && ! grep -q "^OLLAMA_HOST=$" .env; then
+                local ollama_host=$(grep "^OLLAMA_HOST=" .env | cut -d'=' -f2)
+                echo -e "${GREEN}✓ Ollama 地址: $ollama_host${NC}"
             else
-                echo -e "${YELLOW}⚠ Ollama 未安装，请确保 Ollama 服务可访问${NC}"
+                echo -e "${YELLOW}⚠ OLLAMA_HOST 未配置，请在 .env 中设置${NC}"
+                echo "  Docker 环境建议使用: http://宿主机IP:11434"
                 WARNING_COUNT=$((WARNING_COUNT + 1))
             fi
         fi

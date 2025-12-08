@@ -15,7 +15,7 @@ export default defineConfig({
     outDir: 'dist',              // 输出目录
     assetsDir: 'assets',         // 静态资源目录
     sourcemap: false,            // 生产环境不生成 sourcemap
-    minify: 'terser',            // 使用 terser 压缩
+    minify: 'esbuild',           // 使用 esbuild 压缩（更快，Vite 内置）
     chunkSizeWarningLimit: 1500, // chunk 大小警告阈值 (KB)
     
     // Rollup 打包配置
