@@ -80,44 +80,62 @@ English | [简体中文](README.md)
 - 8GB+ RAM
 - 20GB+ Disk Space
 
-### One-Click Deployment
+### One-Click Deployment (Recommended) ⭐
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/QwQBiG/qwq-aiops.git
 cd qwq-aiops
 
-# 2. Configure environment variables (optional)
-cp .env.example .env
-# Edit .env file to configure AI model API
+# 2. Run one-click deployment script (will automatically configure AI service)
+chmod +x 一键部署.sh
+sudo ./一键部署.sh
 
-# 3. Start services
-chmod +x deploy.sh
-./deploy.sh
+# 3. Follow prompts to select AI service type
+# Option 1: OpenAI API (requires API Key)
+# Option 2: Ollama local model (free)
+# Option 3: Skip configuration (configure manually later)
 
 # 4. Access the system
-# Frontend: http://localhost:8080
-# API Docs: http://localhost:8080/api/docs
+# Frontend: http://localhost:8081
+# API Docs: http://localhost:8081/api/docs
+# Prometheus: http://localhost:9091
+# Grafana: http://localhost:3000
 # Default credentials: admin / admin123
 ```
+
+**The script will automatically:**
+- ✅ Configure AI service (OpenAI or Ollama)
+- ✅ Configure Docker registry mirrors (speed up downloads)
+- ✅ Create required configuration files
+- ✅ Build Docker images
+- ✅ Start all services
+- ✅ Verify service status
 
 ### Docker Compose Deployment
 
 ```bash
-# Build and start all services (first run takes 6-10 minutes)
+# 1. Configure AI service (required)
+chmod +x 配置AI服务.sh
+./配置AI服务.sh
+
+# 2. Build and start all services (first run takes 6-10 minutes)
 docker compose up -d --build
 
-# View logs
+# 3. View logs
 docker compose logs -f qwq
 
-# Stop services
+# 4. Stop services
 docker compose down
 
-# Access the system
+# 5. Access the system
 # Frontend: http://localhost:8081
 # API Docs: http://localhost:8081/api/docs
 
-# Note: Use docker compose (V2, no hyphen) instead of docker-compose (V1)
+# Note:
+# - ⚠️ Must configure AI service first, otherwise it won't start!
+# - Use docker compose (V2, no hyphen) instead of docker-compose (V1)
+# - Port changed to 8081 (to avoid conflicts with other services)
 ```
 
 ### Manual Build

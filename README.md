@@ -80,44 +80,62 @@
 - 8GB+ 内存
 - 20GB+ 磁盘空间
 
-### 一键部署
+### 一键部署（推荐）⭐
 
 ```bash
 # 1. 克隆项目
 git clone https://github.com/QwQBiG/qwq-aiops.git
 cd qwq-aiops
 
-# 2. 配置环境变量（可选）
-cp .env.example .env
-# 编辑 .env 文件，配置 AI 模型 API
+# 2. 运行一键部署脚本（会自动配置 AI 服务）
+chmod +x 一键部署.sh
+sudo ./一键部署.sh
 
-# 3. 启动服务
-chmod +x deploy.sh
-./deploy.sh
+# 3. 按提示选择 AI 服务类型
+# 选项 1: OpenAI API（需要 API Key）
+# 选项 2: Ollama 本地模型（免费）
+# 选项 3: 跳过配置（稍后手动配置）
 
 # 4. 访问系统
 # 前端界面: http://localhost:8081
 # API 文档: http://localhost:8081/api/docs
+# Prometheus: http://localhost:9091
+# Grafana: http://localhost:3000
 # 默认账号: admin / admin123
 ```
+
+**脚本会自动完成：**
+- ✅ 配置 AI 服务（OpenAI 或 Ollama）
+- ✅ 配置 Docker 国内镜像源（加速下载）
+- ✅ 创建所需的配置文件
+- ✅ 构建 Docker 镜像
+- ✅ 启动所有服务
+- ✅ 验证服务状态
 
 ### Docker Compose 部署
 
 ```bash
-# 构建并启动所有服务（首次运行，约 6-10 分钟）
+# 1. 配置 AI 服务（必须）
+chmod +x 配置AI服务.sh
+./配置AI服务.sh
+
+# 2. 构建并启动所有服务（首次运行，约 6-10 分钟）
 docker compose up -d --build
 
-# 查看日志
+# 3. 查看日志
 docker compose logs -f qwq
 
-# 停止服务
+# 4. 停止服务
 docker compose down
 
-# 访问系统
+# 5. 访问系统
 # 前端界面: http://localhost:8081
 # API 文档: http://localhost:8081/api/docs
 
-# 注意：使用 docker compose（V2，无连字符）而不是 docker-compose（V1）
+# 注意：
+# - ⚠️ 必须先配置 AI 服务，否则无法启动！
+# - 使用 docker compose（V2，无连字符）而不是 docker-compose（V1）
+# - 端口已修改为 8081（避免与其他服务冲突）
 ```
 
 ### 手动编译
