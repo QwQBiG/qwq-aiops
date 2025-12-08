@@ -11,13 +11,12 @@ services:
       - "8081:8080"  # 主服务端口（宿主机8081映射到容器8080）
     volumes:
       # Docker socket（用于容器管理）
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Windows 使用命名管道，Linux/Mac 使用 socket
+      - //var/run/docker.sock:/var/run/docker.sock:ro
       # 数据持久化
       - ./data:/app/data
       - ./logs:/app/logs
       - ./backups:/app/backups
-      # 配置文件（可选）
-      - ./config.json:/app/config.json:ro
     environment:
       # 基础配置
       - TZ=Asia/Shanghai
@@ -30,23 +29,23 @@ services:
       - DB_PATH=/app/data/qwq.db
       
       # ============================================
-      # AI 配置（必须配置，二选一）
+      # AI 配置（必须配置）
       # ============================================
-      # 方式 1: OpenAI API（推荐新手，需要 API Key）
-      # - AI_PROVIDER=openai
-      # - OPENAI_API_KEY=sk-your-api-key-here
-      # - OPENAI_BASE_URL=https://api.openai.com/v1
-      # - OPENAI_MODEL=gpt-3.5-turbo
-      
-      # 方式 2: Ollama 本地模型（推荐企业，完全免费）
-      # - AI_PROVIDER=ollama
-      # - OLLAMA_HOST=http://host.docker.internal:11434
-      # - OLLAMA_MODEL=qwen2.5:7b
+      # 从 .env 文件读取配置
+      # 请编辑 .env 文件配置 AI 服务
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-3.5-turbo}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+      - AI_TIMEOUT=${AI_TIMEOUT:-60}
       
       # 配置方法：
-      # 1. 取消上面某一种方式的注释（删除行首的 #）
-      # 2. 填入正确的配置值
-      # 3. 运行: docker compose restart qwq
+      # 1. 复制 .env.example 为 .env
+      # 2. 编辑 .env 文件，取消 AI 配置的注释
+      # 3. 填入正确的配置值
+      # 4. 重启服务: docker compose restart qwq
       # ============================================
       
       # 安全配置（请修改为强密码）
