@@ -29,10 +29,25 @@ services:
       - DB_TYPE=sqlite
       - DB_PATH=/app/data/qwq.db
       
-      # AI 配置（根据需要修改）
-      - AI_PROVIDER=openai
-      # - OPENAI_API_KEY=your-api-key-here
-      # - OLLAMA_HOST=http://ollama:11434
+      # ============================================
+      # AI 配置（必须配置，二选一）
+      # ============================================
+      # 方式 1: OpenAI API（推荐新手，需要 API Key）
+      # - AI_PROVIDER=openai
+      # - OPENAI_API_KEY=sk-your-api-key-here
+      # - OPENAI_BASE_URL=https://api.openai.com/v1
+      # - OPENAI_MODEL=gpt-3.5-turbo
+      
+      # 方式 2: Ollama 本地模型（推荐企业，完全免费）
+      # - AI_PROVIDER=ollama
+      # - OLLAMA_HOST=http://host.docker.internal:11434
+      # - OLLAMA_MODEL=qwen2.5:7b
+      
+      # 配置方法：
+      # 1. 取消上面某一种方式的注释（删除行首的 #）
+      # 2. 填入正确的配置值
+      # 3. 运行: docker compose restart qwq
+      # ============================================
       
       # 安全配置（请修改为强密码）
       - JWT_SECRET=change-this-to-random-secret
@@ -66,7 +81,7 @@ services:
     container_name: qwq-mysql
     restart: unless-stopped
     ports:
-      - "3307:3306"  # 宿主机端口改为 3307，避免冲突
+      - "3308:3306"  # 使用 3308 端口，避免与常见服务冲突
     environment:
       - MYSQL_ROOT_PASSWORD=change-this-password
       - MYSQL_DATABASE=qwq
@@ -99,7 +114,7 @@ services:
     container_name: qwq-redis
     restart: unless-stopped
     ports:
-      - "6380:6379"  # 宿主机端口改为 6380，避免冲突
+      - "6380:6379"  # 使用 6380 端口，避免与常见服务冲突
     command: redis-server --appendonly yes
     volumes:
       - redis-data:/data
@@ -112,7 +127,7 @@ services:
     container_name: qwq-prometheus
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "9091:9090"  # 使用 9091 端口，避免与常见服务冲突
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus

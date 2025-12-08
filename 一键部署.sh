@@ -19,6 +19,124 @@ echo "  qwq AIOps 平台 - 一键部署"
 echo "========================================"
 echo ""
 
+# 步骤 0: AI 配置检查
+echo -e "${BLUE}[配置检查] AI 服务配置${NC}"
+echo ""
+echo "qwq 是 AI 驱动的平台，需要配置 AI 服务才能运行。"
+echo ""
+echo "请选择 AI 服务类型："
+echo "  1) OpenAI API（需要 API Key）"
+echo "  2) Ollama 本地模型（免费，需要先安装）"
+echo "  3) 跳过配置（稍后手动配置）"
+echo ""
+read -p "请输入选项 [1-3]: " AI_CHOICE
+
+AI_CONFIGURED=false
+
+case $AI_CHOICE in
+    1)
+        echo ""
+        echo -e "${BLUE}配置 OpenAI API${NC}"
+        echo ""
+        read -p "请输入你的 OpenAI API Key: " OPENAI_KEY
+        
+        if [ -z "$OPENAI_KEY" ]; then
+            echo -e "${RED}✗ API Key 不能为空${NC}"
+            exit 1
+        fi
+        
+        read -p "请输入 API 地址 [默认: https://api.openai.com/v1]: " OPENAI_URL
+        OPENAI_URL=${OPENAI_URL:-https://api.openai.com/v1}
+        
+        read -p "请输入模型名称 [默认: gpt-3.5-turbo]: " OPENAI_MODEL
+        OPENAI_MODEL=${OPENAI_MODEL:-gpt-3.5-turbo}
+        
+        AI_PROVIDER="openai"
+        AI_CONFIGURED=true
+        echo -e "${GREEN}✓ OpenAI 配置完成${NC}"
+        ;;
+        
+    2)
+        echo ""
+        echo -e "${BLUE}配置 Ollama${NC}"
+        echo ""
+        
+        # 检查 Ollama 是否安装
+        if command -v ollama &> /dev/null; then
+            echo -e "${GREEN}✓ 检测到 Ollama 已安装${NC}"
+            OLLAMA_HOST="http://host.docker.internal:11434"
+        else
+            echo -e "${YELLOW}⚠ 未检测到 Ollama${NC}"
+            echo ""
+            echo "请选择："
+            echo "  1) 安装 Ollama（推荐）"
+            echo "  2) 手动输入 Ollama 地址"
+            echo ""
+            read -p "请选择 [1-2]: " OLLAMA_CHOICE
+            
+            if [ "$OLLAMA_CHOICE" = "1" ]; then
+                echo ""
+                echo "正在安装 Ollama..."
+                curl -fsSL https://ollama.com/install.sh | sh
+                
+                echo ""
+                echo "下载推荐模型（qwen2.5:7b）..."
+                ollama pull qwen2.5:7b
+                
+                OLLAMA_HOST="http://host.docker.internal:11434"
+            else
+                read -p "请输入 Ollama 服务地址 [默认: http://host.docker.internal:11434]: " OLLAMA_HOST
+                OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+            fi
+        fi
+        
+        read -p "请输入模型名称 [默认: qwen2.5:7b]: " OLLAMA_MODEL
+        OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+        
+        # 测试连接
+        echo ""
+        echo "测试 Ollama 连接..."
+        if curl -s --connect-timeout 5 "$OLLAMA_HOST/api/tags" >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ Ollama 连接成功${NC}"
+        else
+            echo -e "${YELLOW}⚠ 无法连接到 Ollama${NC}"
+            echo "请确保 Ollama 服务已启动"
+            read -p "是否继续部署？[y/N]: " CONTINUE
+            if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
+                exit 1
+            fi
+        fi
+        
+        AI_PROVIDER="ollama"
+        AI_CONFIGURED=true
+        echo -e "${GREEN}✓ Ollama 配置完成${NC}"
+        ;;
+        
+    3)
+        echo -e "${YELLOW}⚠ 跳过 AI 配置${NC}"
+        echo ""
+        echo "注意: qwq 需要 AI 服务才能正常运行！"
+        echo "服务启动后需要手动配置，步骤："
+        echo "  1. 编辑 docker-compose.yml"
+        echo "  2. 取消 AI 配置的注释（删除行首的 #）"
+        echo "  3. 填入正确的配置值"
+        echo "  4. 运行: docker compose restart qwq"
+        echo ""
+        read -p "确认继续？[y/N]: " CONTINUE
+        if [[ ! $CONTINUE =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+        AI_PROVIDER="none"
+        AI_CONFIGURED=false
+        ;;
+    *)
+        echo -e "${RED}✗ 无效选项${NC}"
+        exit 1
+        ;;
+esac
+
+echo ""
+
 # 检查是否为 root 用户
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${YELLOW}[提示] 需要 root 权限，尝试使用 sudo...${NC}"
@@ -150,7 +268,7 @@ for IMAGE in "${BASE_IMAGES[@]}"; do
     # 如果失败，尝试使用国内镜像源
     echo -e "${YELLOW}  直接拉取失败，尝试使用镜像源...${NC}"
     
-    # 尝试不同的镜像源（优先使用学校网络友好的镜像源）
+    # 尝试不同的镜像源
     MIRRORS=("docker.m.daocloud.io" "reg-mirror.qiniu.com" "docker.mirrors.ustc.edu.cn" "hub-mirror.c.163.com" "mirror.baidubce.com")
     SUCCESS=false
     
@@ -172,6 +290,31 @@ for IMAGE in "${BASE_IMAGES[@]}"; do
 done
 
 echo -e "${GREEN}✓ 镜像预拉取完成${NC}"
+echo ""
+
+# 更新 docker-compose.yml 中的 AI 配置
+if [ "$AI_CONFIGURED" = true ]; then
+    echo -e "${BLUE}更新 AI 配置到 docker-compose.yml...${NC}"
+    
+    # 备份原文件
+    cp docker-compose.yml docker-compose.yml.backup.$(date +%Y%m%d%H%M%S)
+    
+    if [ "$AI_PROVIDER" = "openai" ]; then
+        # 启用 OpenAI 配置
+        sed -i '/# 方式 1: OpenAI API/,/# - OPENAI_MODEL=/s/^      # - /      - /' docker-compose.yml
+        sed -i "s|OPENAI_API_KEY=.*|OPENAI_API_KEY=$OPENAI_KEY|" docker-compose.yml
+        sed -i "s|OPENAI_BASE_URL=.*|OPENAI_BASE_URL=$OPENAI_URL|" docker-compose.yml
+        sed -i "s|OPENAI_MODEL=.*|OPENAI_MODEL=$OPENAI_MODEL|" docker-compose.yml
+        echo -e "${GREEN}✓ OpenAI 配置已更新${NC}"
+    elif [ "$AI_PROVIDER" = "ollama" ]; then
+        # 启用 Ollama 配置
+        sed -i '/# 方式 2: Ollama 本地模型/,/# - OLLAMA_MODEL=/s/^      # - /      - /' docker-compose.yml
+        sed -i "s|OLLAMA_HOST=.*|OLLAMA_HOST=$OLLAMA_HOST|" docker-compose.yml
+        sed -i "s|OLLAMA_MODEL=.*|OLLAMA_MODEL=$OLLAMA_MODEL|" docker-compose.yml
+        echo -e "${GREEN}✓ Ollama 配置已更新${NC}"
+    fi
+fi
+
 echo ""
 
 # 步骤 7: 构建并启动
@@ -196,13 +339,24 @@ if docker compose build --no-cache; then
         echo "访问地址："
         echo -e "  前端界面: ${BLUE}http://localhost:8081${NC}"
         echo -e "  API 文档: ${BLUE}http://localhost:8081/api/docs${NC}"
-        echo -e "  Prometheus: ${BLUE}http://localhost:9090${NC}"
+        echo -e "  Prometheus: ${BLUE}http://localhost:9091${NC}"
         echo -e "  Grafana: ${BLUE}http://localhost:3000${NC}"
         echo ""
         echo "默认账号："
         echo "  用户名: admin"
         echo "  密码: admin123"
         echo ""
+        
+        if [ "$AI_CONFIGURED" = false ]; then
+            echo -e "${YELLOW}⚠ 注意: AI 服务未配置${NC}"
+            echo "请按以下步骤配置："
+            echo "  1. 编辑 docker-compose.yml"
+            echo "  2. 取消 AI 配置的注释（删除行首的 #）"
+            echo "  3. 填入正确的配置值"
+            echo "  4. 运行: docker compose restart qwq"
+            echo ""
+        fi
+        
         echo "查看日志："
         echo "  docker compose logs -f qwq"
         echo ""

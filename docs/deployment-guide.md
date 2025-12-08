@@ -102,10 +102,19 @@ docker compose logs -f qwq
 # 健康检查: http://localhost:8081/api/health
 
 # 注意：
+# - ⚠️ 必须先配置 AI 服务，否则无法启动！
 # - 使用 docker compose（V2，无连字符）而不是 docker-compose（V1）
 # - 首次启动会自动构建 Docker 镜像，需要一些时间
 # - 端口已修改为 8081（避免与其他服务冲突）
 # - 如需修改端口，编辑 docker-compose.yml 中的端口映射
+
+# 配置 AI 服务：
+# 方法 1: 使用配置向导
+chmod +x 配置AI服务.sh
+./配置AI服务.sh
+
+# 方法 2: 手动编辑 docker-compose.yml
+# 取消 AI 配置的注释，填入正确的值
 ```
 
 ### 方式三：手动 Docker 部署
@@ -532,10 +541,14 @@ docker run \
 
 | 端口 | 服务 | 说明 |
 |------|------|------|
-| 8080 | 前端 Web UI | 用户访问的主界面 |
+| 8081 | 前端 Web UI | 用户访问的主界面（避免与常见服务冲突） |
 | 8899 | 后端 API | RESTful API 服务 |
-| 9090 | Prometheus | 监控指标（可选） |
+| 3308 | MySQL | 数据库服务（避免与默认 3306 冲突） |
+| 6380 | Redis | 缓存服务（避免与默认 6379 冲突） |
+| 9091 | Prometheus | 监控指标（避免与默认 9090 冲突） |
 | 3000 | Grafana | 监控面板（可选） |
+
+**注意**：所有端口都选择了不常用的端口号，以避免与其他服务冲突。如需修改，请编辑 `docker-compose.yml` 中的端口映射。
 
 ## 监控和维护
 
