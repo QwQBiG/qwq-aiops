@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -94,7 +95,8 @@ func (egs *EnhancedGatewayServer) Stop() error {
 
 // registerDefaultServices 注册默认服务到服务注册中心
 func (egs *EnhancedGatewayServer) registerDefaultServices() {
-	// 从环境变量读取主服务端口
+	// 从环境变量读取主服务端口，默认 8080
+	// 这样可以与 docker-compose.yml 中的 PORT 环境变量保持一致
 	mainPort := 8080
 	if portStr := os.Getenv("PORT"); portStr != "" {
 		if p, err := strconv.Atoi(portStr); err == nil {
@@ -102,6 +104,8 @@ func (egs *EnhancedGatewayServer) registerDefaultServices() {
 		}
 	}
 	
+	// 定义默认服务列表
+	// web-ui 使用从环境变量读取的端口，其他微服务使用预留端口
 	defaultServices := []struct {
 		name    string
 		address string
