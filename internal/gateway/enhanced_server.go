@@ -124,6 +124,7 @@ func (egs *EnhancedGatewayServer) registerDefaultServices() {
 		{"monitoring", "localhost", 8906, "/health", "1.0", []string{"monitoring", "backend"}},
 	}
 	
+	// 遍历并注册所有默认服务
 	for _, service := range defaultServices {
 		req := &registry.RegistrationRequest{
 			Name:     service.name,
@@ -132,13 +133,14 @@ func (egs *EnhancedGatewayServer) registerDefaultServices() {
 			Health:   fmt.Sprintf("http://%s:%d%s", service.address, service.port, service.health),
 			Version:  service.version,
 			Tags:     service.tags,
-			Weight:   100,
-			MaxFails: 3,
+			Weight:   100,    // 默认权重
+			MaxFails: 3,      // 最大失败次数
 		}
 		
+		// 注册到服务注册中心
 		_, err := egs.registry.Register(req)
 		if err != nil {
-			// Service registration failed: service.name - err
+			// 注册失败，跳过该服务
 			continue
 		}
 		
@@ -176,23 +178,27 @@ func (egs *EnhancedGatewayServer) registerServiceRoutes(serviceName string) {
 // startRegistryAPI 启动服务注册中心API
 func (egs *EnhancedGatewayServer) startRegistryAPI() {
 	// 从网关端口号推导注册中心端口号
+	// 例如：网关端口 8080，则注册中心端口为 9080
 	gatewayPort := strings.TrimPrefix(egs.server.Addr, ":")
 	port, err := strconv.Atoi(gatewayPort)
 	if err != nil {
-		port = 8080
+		port = 8080 // 解析失败时使用默认端口
 	}
 	registryPort := port + 1000 // 注册中心端口 = 网关端口 + 1000
 	
+	// 启动注册中心 HTTP API 服务器
 	err = registry.StartRegistryServer(registryPort, egs.registry, egs.discoveryClient)
 	if err != nil {
-		// Registry API server failed to start: err
+		// 启动失败，但不影响网关主服务
 	}
 }
 
 // setupDynamicRouting 设置动态路由更新
+// 监听服务状态变化，自动更新路由配置
 func (egs *EnhancedGatewayServer) setupDynamicRouting() {
-	// 监听所有服务的变化
+	// 获取所有健康的服务
 	healthyServices := egs.registry.GetHealthyServices()
+	// 为每个服务设置监听器，当服务状态变化时自动更新路由
 	for serviceName := range healthyServices {
 		egs.discoveryClient.WatchService(serviceName, egs.onServiceChange)
 	}
@@ -205,19 +211,21 @@ func (egs *EnhancedGatewayServer) onServiceChange(serviceName string, instances 
 }
 
 // updateGatewayServices 更新网关中的服务信息
+// 当服务实例发生变化时，同步更新网关的路由配置
 func (egs *EnhancedGatewayServer) updateGatewayServices(serviceName string, instances []*registry.ServiceInstance) {
-	// 清除旧的服务信息
+	// 先清除旧的服务信息
 	egs.gateway.UnregisterService(serviceName)
 	
-	// 注册新的服务实例
+	// 注册所有健康的服务实例
 	for _, instance := range instances {
 		if instance.Status == registry.StatusHealthy {
 			serviceURL := fmt.Sprintf("http://%s:%d", instance.Address, instance.Port)
 			healthURL := instance.Health
 			
+			// 将健康的实例注册到网关
 			err := egs.gateway.RegisterService(instance.ID, serviceURL, healthURL, instance.Version)
 			if err != nil {
-				// Failed to register service instance: instance.ID - err
+				// 注册失败，跳过该实例
 				continue
 			}
 		}
