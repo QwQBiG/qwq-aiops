@@ -117,9 +117,23 @@ func Start(port string) {
 			// 检查文件是否存在
 			_, err := distFS.Open(path)
 			if err != nil {
-				// 文件不存在时返回 index.html，支持前端路由
-				// 这样 /dashboard、/containers 等路由都会返回 index.html
-				// 由 Vue Router 在客户端处理路由
+				// 文件不存在的处理逻辑
+				// 如果请求的是静态资源（JS、CSS、图片等），返回 404
+				// 如果是页面路由（如 /dashboard），返回 index.html 让 Vue Router 处理
+				if strings.HasPrefix(path, "assets/") || 
+				   strings.HasSuffix(path, ".js") || 
+				   strings.HasSuffix(path, ".css") || 
+				   strings.HasSuffix(path, ".png") || 
+				   strings.HasSuffix(path, ".jpg") || 
+				   strings.HasSuffix(path, ".jpeg") || 
+				   strings.HasSuffix(path, ".svg") || 
+				   strings.HasSuffix(path, ".ico") ||
+				   strings.HasSuffix(path, ".json") {
+					// 静态资源不存在，返回 404
+					http.NotFound(w, r)
+					return
+				}
+				// 页面路由不存在，返回 index.html（SPA fallback）
 				path = "index.html"
 			}
 			
@@ -147,6 +161,10 @@ func Start(port string) {
 				contentType = "image/svg+xml"
 			} else if strings.HasSuffix(path, ".ico") {
 				contentType = "image/x-icon"
+			} else if strings.HasSuffix(path, ".woff") || strings.HasSuffix(path, ".woff2") {
+				contentType = "font/woff2"
+			} else if strings.HasSuffix(path, ".ttf") {
+				contentType = "font/ttf"
 			}
 			
 			// 设置响应头并返回文件内容

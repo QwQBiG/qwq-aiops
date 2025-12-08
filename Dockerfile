@@ -54,18 +54,39 @@ ENV CGO_ENABLED=0
 # 复制 Go 模块文件
 COPY go.mod go.sum ./
 
-# 下载依赖（增加超时时间）
+# 下载依赖
 RUN go mod download && go mod verify
 
-# 复制源码（先复制，这样 go:embed 才能找到文件）
+# 复制后端源码
 COPY cmd/ ./cmd/
-COPY internal/ ./internal/
 
-# 从前端构建阶段复制编译好的文件（必须在 COPY internal 之后，这样才不会被覆盖）
+# 复制 internal 目录的各个子目录（避免整体复制导致覆盖问题）
+COPY internal/agent/ ./internal/agent/
+COPY internal/config/ ./internal/config/
+COPY internal/container/ ./internal/container/
+COPY internal/database/ ./internal/database/
+COPY internal/gateway/ ./internal/gateway/
+COPY internal/logger/ ./internal/logger/
+COPY internal/middleware/ ./internal/middleware/
+COPY internal/monitor/ ./internal/monitor/
+COPY internal/notify/ ./internal/notify/
+COPY internal/registry/ ./internal/registry/
+COPY internal/utils/ ./internal/utils/
+
+# 复制 internal/server 目录（但不包括 dist 子目录）
+COPY internal/server/*.go ./internal/server/
+
+# 从前端构建阶段复制前端资源到 internal/server/dist
+# 这一步必须在 Go 编译之前，确保 go:embed 能找到文件
 COPY --from=frontend-builder /app/frontend/dist ./internal/server/dist
 
-# 编译 Go 程序（优化编译参数，自动适配架构）
-# 使用 TARGETPLATFORM 自动适配目标架构，避免交叉编译慢的问题
+# 验证前端文件（确保文件已正确复制）
+RUN echo "=== 前端资源验证 ===" && \
+    ls -lh ./internal/server/dist/ && \
+    echo "总文件数: $(find ./internal/server/dist -type f | wc -l)" && \
+    echo "index.html 存在: $(test -f ./internal/server/dist/index.html && echo '是' || echo '否')"
+
+# 编译 Go 程序
 ARG TARGETARCH
 RUN GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags="-w -s -X main.Version=1.0.0 -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
