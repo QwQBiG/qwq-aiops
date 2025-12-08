@@ -80,7 +80,7 @@ English | [简体中文](README.md)
 - 8GB+ RAM
 - 20GB+ Disk Space
 
-### One-Click Deployment (Recommended) ⭐
+### Method 1: One-Click Deployment (Recommended) ⭐
 
 ```bash
 # 1. Clone the repository
@@ -112,10 +112,48 @@ sudo ./一键部署.sh
 - ✅ Start all services
 - ✅ Verify service status
 
-### Docker Compose Deployment
+### Method 2: Manual .env Configuration (For Advanced Users)
 
 ```bash
-# 1. Configure AI service (required)
+# 1. Clone the repository
+git clone https://github.com/QwQBiG/qwq-aiops.git
+cd qwq-aiops
+
+# 2. Copy and edit environment variables file
+cp .env.example .env
+nano .env  # or use any editor
+
+# 3. Configure AI service (required, choose one)
+# Option 1: OpenAI API
+# AI_PROVIDER=openai
+# OPENAI_API_KEY=sk-your-api-key-here
+# OPENAI_BASE_URL=https://api.openai.com/v1
+# OPENAI_MODEL=gpt-3.5-turbo
+
+# Option 2: Ollama local model
+# AI_PROVIDER=ollama
+# OLLAMA_HOST=http://localhost:11434
+# OLLAMA_MODEL=qwen2.5:7b
+
+# 4. Uncomment one option (remove # at line start) and fill in correct values
+
+# 5. Start services
+docker compose up -d --build
+
+# 6. Access the system
+# Frontend: http://localhost:8081
+```
+
+**Notes**:
+- ⚠️ Must configure AI service, otherwise it won't start
+- Remove `#` and space at line start when uncommenting
+- OpenAI requires valid API Key
+- Ollama requires installation and running service
+
+### Method 3: Configuration Script + Docker Compose
+
+```bash
+# 1. Configure AI service (using interactive script)
 chmod +x 配置AI服务.sh
 ./配置AI服务.sh
 
@@ -133,7 +171,6 @@ docker compose down
 # API Docs: http://localhost:8081/api/docs
 
 # Note:
-# - ⚠️ Must configure AI service first, otherwise it won't start!
 # - Use docker compose (V2, no hyphen) instead of docker-compose (V1)
 # - Port changed to 8081 (to avoid conflicts with other services)
 ```

@@ -80,7 +80,7 @@
 - 8GB+ 内存
 - 20GB+ 磁盘空间
 
-### 一键部署（推荐）⭐
+### 方式一：一键部署（推荐）⭐
 
 ```bash
 # 1. 克隆项目
@@ -112,10 +112,48 @@ sudo ./一键部署.sh
 - ✅ 启动所有服务
 - ✅ 验证服务状态
 
-### Docker Compose 部署
+### 方式二：手动配置 .env（推荐熟悉配置的用户）
 
 ```bash
-# 1. 配置 AI 服务（必须）
+# 1. 克隆项目
+git clone https://github.com/QwQBiG/qwq-aiops.git
+cd qwq-aiops
+
+# 2. 复制并编辑环境变量文件
+cp .env.example .env
+nano .env  # 或使用其他编辑器
+
+# 3. 配置 AI 服务（必须配置，二选一）
+# 方式 1: OpenAI API
+# AI_PROVIDER=openai
+# OPENAI_API_KEY=sk-your-api-key-here
+# OPENAI_BASE_URL=https://api.openai.com/v1
+# OPENAI_MODEL=gpt-3.5-turbo
+
+# 方式 2: Ollama 本地模型
+# AI_PROVIDER=ollama
+# OLLAMA_HOST=http://localhost:11434
+# OLLAMA_MODEL=qwen2.5:7b
+
+# 4. 取消某一种方式的注释（删除行首的 #）并填入正确的值
+
+# 5. 启动服务
+docker compose up -d --build
+
+# 6. 访问系统
+# 前端界面: http://localhost:8081
+```
+
+**注意**：
+- ⚠️ 必须配置 AI 服务，否则无法启动
+- 取消注释时删除行首的 `#` 和空格
+- OpenAI 需要有效的 API Key
+- Ollama 需要先安装并启动服务
+
+### 方式三：使用配置脚本 + Docker Compose
+
+```bash
+# 1. 配置 AI 服务（使用交互式脚本）
 chmod +x 配置AI服务.sh
 ./配置AI服务.sh
 
@@ -133,7 +171,6 @@ docker compose down
 # API 文档: http://localhost:8081/api/docs
 
 # 注意：
-# - ⚠️ 必须先配置 AI 服务，否则无法启动！
 # - 使用 docker compose（V2，无连字符）而不是 docker-compose（V1）
 # - 端口已修改为 8081（避免与其他服务冲突）
 ```
