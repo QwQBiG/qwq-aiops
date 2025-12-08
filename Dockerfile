@@ -57,12 +57,12 @@ COPY go.mod go.sum ./
 # 下载依赖（增加超时时间）
 RUN go mod download && go mod verify
 
-# 从前端构建阶段复制编译好的文件（必须在复制 internal 之前）
-COPY --from=frontend-builder /app/frontend/dist ./internal/server/dist
-
-# 复制源码
+# 复制源码（先复制，这样 go:embed 才能找到文件）
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
+
+# 从前端构建阶段复制编译好的文件（必须在 COPY internal 之后，这样才不会被覆盖）
+COPY --from=frontend-builder /app/frontend/dist ./internal/server/dist
 
 # 编译 Go 程序（优化编译参数，自动适配架构）
 # 使用 TARGETPLATFORM 自动适配目标架构，避免交叉编译慢的问题

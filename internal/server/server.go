@@ -27,74 +27,116 @@ import (
 var frontendDist embed.FS
 
 var (
+	// WebSocket 升级器，允许所有来源的连接
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
+	// 触发巡检的回调函数
 	TriggerPatrolFunc func()
+	// 触发状态推送的回调函数
 	TriggerStatusFunc func()
+	// 日志文件句柄
 	logFile           *os.File
 	
+	// 统计数据缓存，用于存储历史监控数据
 	statsCache struct {
 		sync.RWMutex
 		History []StatsPoint
 	}
 )
 
+// StatsPoint 系统监控数据点
 type StatsPoint struct {
-	Time      string      `json:"time"`
-	Load      string      `json:"load"`
-	MemPct    string      `json:"mem_pct"`
-	MemUsed   string      `json:"mem_used"`
-	MemTotal  string      `json:"mem_total"`
-	DiskPct   string      `json:"disk_pct"`
-	DiskAvail string      `json:"disk_avail"`
-	TcpConn   string      `json:"tcp_conn"`
-	Services  interface{} `json:"services"`
+	Time      string      `json:"time"`       // 采集时间
+	Load      string      `json:"load"`       // 系统负载
+	MemPct    string      `json:"mem_pct"`    // 内存使用百分比
+	MemUsed   string      `json:"mem_used"`   // 已使用内存(MB)
+	MemTotal  string      `json:"mem_total"`  // 总内存(MB)
+	DiskPct   string      `json:"disk_pct"`   // 磁盘使用百分比
+	DiskAvail string      `json:"disk_avail"` // 可用磁盘空间
+	TcpConn   string      `json:"tcp_conn"`   // TCP 连接数
+	Services  interface{} `json:"services"`   // 服务状态
 }
 
+// DockerContainer Docker 容器信息
 type DockerContainer struct {
-	ID      string `json:"id"`
-	Image   string `json:"image"`
-	Status  string `json:"status"`
-	Name    string `json:"name"`
-	State   string `json:"state"`
+	ID      string `json:"id"`     // 容器 ID
+	Image   string `json:"image"`  // 镜像名称
+	Status  string `json:"status"` // 状态描述
+	Name    string `json:"name"`   // 容器名称
+	State   string `json:"state"`  // 运行状态(running/exited)
 }
 
+// Start 启动 Web 服务器
 func Start(port string) {
+	// 打开日志文件
 	var err error
 	logFile, err = os.OpenFile("qwq.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Printf("无法创建日志文件: %v\n", err)
 	}
 
+	// 启动后台监控数据采集
 	go collectStatsLoop()
 
+	// 注册 API 路由
+	http.HandleFunc("/api/logs", basicAuth(handleLogs))                     // 日志查询
+	http.HandleFunc("/api/stats", basicAuth(handleStats))                   // 监控数据
+	http.HandleFunc("/api/trigger", basicAuth(handleTrigger))               // 触发巡检
+	http.HandleFunc("/api/containers", basicAuth(handleContainers))         // 容器列表
+	http.HandleFunc("/api/container/action", basicAuth(handleContainerAction)) // 容器操作
+
+	// 文件管理 API
+	http.HandleFunc("/api/files/list", basicAuth(handleFileList))       // 文件列表
+	http.HandleFunc("/api/files/content", basicAuth(handleFileContent)) // 文件内容
+	http.HandleFunc("/api/files/save", basicAuth(handleFileSave))       // 保存文件
+	http.HandleFunc("/api/files/action", basicAuth(handleFileAction))   // 文件操作
+
+	// WebSocket 聊天接口
+	http.HandleFunc("/ws/chat", basicAuth(handleWSChat))
+
+	// 加载前端静态资源（Vue 3 SPA 构建产物）
+	// 注意：必须在所有 API 路由之后注册，确保 API 路由优先匹配
 	distFS, err := fs.Sub(frontendDist, "dist")
 	if err != nil {
 		logger.Info("⚠️ 前端资源加载异常: %v", err)
 	} else {
-		fileServer := http.FileServer(http.FS(distFS))
-		http.Handle("/assets/", fileServer)
+		// 注册根路径处理器，处理所有前端请求
+		// 支持 Vue Router 的 HTML5 History 模式
 		http.HandleFunc("/", basicAuth(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/ws/") {
-				return 
+			// 尝试打开请求的文件
+			path := strings.TrimPrefix(r.URL.Path, "/")
+			if path == "" {
+				path = "index.html"
 			}
-			fileServer.ServeHTTP(w, r)
+			
+			file, err := distFS.Open(path)
+			if err != nil {
+				// 文件不存在，返回 index.html（支持 SPA 路由）
+				indexFile, err := distFS.Open("index.html")
+				if err != nil {
+					http.Error(w, "index.html not found", http.StatusNotFound)
+					return
+				}
+				defer indexFile.Close()
+				
+				// 读取 index.html 内容
+				content, err := fs.ReadFile(distFS, "index.html")
+				if err != nil {
+					http.Error(w, "Failed to read index.html", http.StatusInternalServerError)
+					return
+				}
+				
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.Write(content)
+				return
+			}
+			defer file.Close()
+			
+			// 文件存在，使用标准文件服务器处理
+			http.FileServer(http.FS(distFS)).ServeHTTP(w, r)
 		}))
 	}
-
-	http.HandleFunc("/api/logs", basicAuth(handleLogs))
-	http.HandleFunc("/api/stats", basicAuth(handleStats))
-	http.HandleFunc("/api/trigger", basicAuth(handleTrigger))
-	http.HandleFunc("/api/containers", basicAuth(handleContainers))
-	http.HandleFunc("/api/container/action", basicAuth(handleContainerAction))
-
-	http.HandleFunc("/api/files/list", basicAuth(handleFileList))
-	http.HandleFunc("/api/files/content", basicAuth(handleFileContent))
-	http.HandleFunc("/api/files/save", basicAuth(handleFileSave))
-	http.HandleFunc("/api/files/action", basicAuth(handleFileAction))
-
-	http.HandleFunc("/ws/chat", basicAuth(handleWSChat))
 
 	// 获取实际端口号（去掉冒号）
 	displayPort := strings.TrimPrefix(port, ":")
@@ -108,8 +150,11 @@ func Start(port string) {
 	}
 }
 
-// --- 容器管理 ---
+// ============================================
+// 容器管理 API
+// ============================================
 
+// handleContainers 获取 Docker 容器列表
 func handleContainers(w http.ResponseWriter, r *http.Request) {
 	cmd := `docker ps -a --format "{{.ID}}|{{.Image}}|{{.Status}}|{{.Names}}"`
 	output := utils.ExecuteShell(cmd)
@@ -136,19 +181,33 @@ func handleContainers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(containers)
 }
 
+// handleContainerAction 执行容器操作（启动/停止/重启）
 func handleContainerAction(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	action := r.URL.Query().Get("action")
-	if id == "" || action == "" { http.Error(w, "Missing params", 400); return }
-	if action != "start" && action != "stop" && action != "restart" { http.Error(w, "Invalid action", 400); return }
+	
+	// 参数验证
+	if id == "" || action == "" { 
+		http.Error(w, "Missing params", 400)
+		return 
+	}
+	if action != "start" && action != "stop" && action != "restart" { 
+		http.Error(w, "Invalid action", 400)
+		return 
+	}
+	
+	// 执行 Docker 命令
 	cmd := fmt.Sprintf("docker %s %s", action, id)
 	logger.Info("Web操作容器: %s", cmd)
 	utils.ExecuteShell(cmd)
 	w.Write([]byte("success"))
 }
 
-// --- 监控采集 ---
+// ============================================
+// 监控数据采集
+// ============================================
 
+// collectStatsLoop 定时采集系统监控数据
 func collectStatsLoop() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
@@ -161,15 +220,22 @@ func collectStatsLoop() {
 	}
 }
 
+// collectOnePoint 采集一次系统监控数据
+// 包括：系统负载、内存使用、磁盘使用、TCP 连接数、服务状态
 func collectOnePoint() StatsPoint {
+	// 获取系统负载（1分钟、5分钟、15分钟平均值）
 	load := strings.TrimSpace(utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }'"))
+	
+	// 获取内存使用情况（单位：MB）
 	memRaw := utils.ExecuteShell("free -m | awk 'NR==2{print $2,$3}'")
 	var memTotal, memUsed float64
 	fmt.Sscanf(memRaw, "%f %f", &memTotal, &memUsed)
 	memPct := 0.0
-	if memTotal > 0 { memPct = (memUsed / memTotal) * 100 }
+	if memTotal > 0 { 
+		memPct = (memUsed / memTotal) * 100 
+	}
 	
-	// 仪表盘只看根目录
+	// 获取根目录磁盘使用情况（仪表盘只显示根目录）
 	diskRaw := utils.ExecuteShell("df -h / | awk 'NR==2 {print $5,$4}'")
 	diskParts := strings.Fields(diskRaw)
 	diskPct := "0"
@@ -178,10 +244,17 @@ func collectOnePoint() StatsPoint {
 		diskPct = strings.TrimSuffix(diskParts[0], "%")
 		diskAvail = diskParts[1]
 	}
+	
+	// 获取 TCP 连接数（已建立的连接）
 	tcpRaw := utils.ExecuteShell("ss -s | grep 'TCP:' | grep -oE 'estab [0-9]+' | awk '{print $2}'")
 	tcpConn := strings.TrimSpace(tcpRaw)
-	if tcpConn == "" { tcpConn = "0" }
+	if tcpConn == "" { 
+		tcpConn = "0" 
+	}
+	
+	// 执行 HTTP 服务健康检查
 	httpStatus := monitor.RunChecks()
+	
 	return StatsPoint{
 		Time:      time.Now().Format("15:04:05"),
 		Load:      load,
@@ -195,16 +268,25 @@ func collectOnePoint() StatsPoint {
 	}
 }
 
-// --- 基础认证 ---
+// ============================================
+// 认证中间件
+// ============================================
 
+// basicAuth HTTP 基础认证中间件
+// 如果配置了用户名和密码，则要求客户端提供认证信息
+// 使用 constant time 比较防止时序攻击
 func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userCfg := config.GlobalConfig.WebUser
 		passCfg := config.GlobalConfig.WebPassword
+		
+		// 未配置认证，直接放行
 		if userCfg == "" || passCfg == "" {
 			next(w, r)
 			return
 		}
+		
+		// 验证认证信息
 		user, pass, ok := r.BasicAuth()
 		if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(userCfg)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(passCfg)) != 1 {
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
@@ -215,23 +297,43 @@ func basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// --- WebSocket 聊天 ---
+// ============================================
+// WebSocket 聊天接口
+// ============================================
 
+// handleWSChat 处理 WebSocket 聊天连接
+// 支持三种处理模式：
+// 1. 静态响应 - 快速回答常见问题
+// 2. 快速命令 - 直接执行预定义命令
+// 3. AI 对话 - 调用 AI 进行智能分析
 func handleWSChat(w http.ResponseWriter, r *http.Request) {
+	// 升级 HTTP 连接为 WebSocket
 	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil { logger.Info("WS Upgrade Error: %v", err); return }
+	if err != nil { 
+		logger.Info("WS Upgrade Error: %v", err)
+		return 
+	}
 	defer conn.Close()
+	
+	// 初始化对话上下文
 	messages := agent.GetBaseMessages()
+	
+	// 持续监听客户端消息
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil { break }
+		
 		input := string(msg)
+		
+		// 1. 尝试静态响应（最快）
 		staticResp := agent.CheckStaticResponse(input)
 		if staticResp != "" {
 			conn.WriteJSON(map[string]string{"type": "answer", "content": staticResp})
 			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
 			continue
 		}
+		
+		// 2. 尝试快速命令执行
 		quickCmd := agent.GetQuickCommand(input)
 		if quickCmd != "" {
 			conn.WriteJSON(map[string]string{"type": "status", "content": "⚡ 快速执行: " + quickCmd})
@@ -242,31 +344,47 @@ func handleWSChat(w http.ResponseWriter, r *http.Request) {
 			conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
 			continue
 		}
+		
+		// 3. AI 智能对话（最慢但最强大）
 		enhancedInput := input + " (Context: Current Linux Server)"
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
+		
+		// 最多执行 5 轮对话（防止无限循环）
 		for i := 0; i < 5; i++ {
 			conn.WriteJSON(map[string]string{"type": "status", "content": "🤖 思考中..."})
+			
+			// 处理 AI 响应，实时推送日志
 			respMsg, cont := agent.ProcessAgentStepForWeb(&messages, func(log string) {
 				conn.WriteJSON(map[string]string{"type": "log", "content": log})
 			})
+			
 			if respMsg.Content != "" {
 				conn.WriteJSON(map[string]string{"type": "answer", "content": respMsg.Content})
 			}
+			
+			// 如果 AI 表示完成，退出循环
 			if !cont { break }
 		}
+		
 		conn.WriteJSON(map[string]string{"type": "status", "content": "等待指令..."})
 	}
 }
 
-// --- 其他 API ---
+// ============================================
+// 通用 API 处理器
+// ============================================
 
+// handleLogs 获取系统日志
 func handleLogs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(logger.GetWebLogs())
 }
 
+// handleStats 获取监控统计数据
+// 返回最近 60 个数据点（2 分钟历史）
 func handleStats(w http.ResponseWriter, r *http.Request) {
 	statsCache.RLock()
 	defer statsCache.RUnlock()
+	
 	if len(statsCache.History) == 0 {
 		json.NewEncoder(w).Encode([]StatsPoint{})
 		return
@@ -274,21 +392,35 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(statsCache.History)
 }
 
+// handleTrigger 手动触发巡检和状态推送
+// 异步执行，立即返回响应
 func handleTrigger(w http.ResponseWriter, r *http.Request) {
-	if TriggerPatrolFunc != nil { go TriggerPatrolFunc() }
-	if TriggerStatusFunc != nil { go TriggerStatusFunc() }
+	if TriggerPatrolFunc != nil { 
+		go TriggerPatrolFunc() 
+	}
+	if TriggerStatusFunc != nil { 
+		go TriggerStatusFunc() 
+	}
 	w.Write([]byte("指令已发送：正在后台执行巡检和汇报..."))
 }
 
+// WebLog 记录 Web 日志（供外部调用）
 func WebLog(msg string) {
 	logger.Info(msg)
 }
 
+// ============================================
+// 系统巡检功能
+// ============================================
+
+// performPatrol 执行系统巡检
+// 检查项目：磁盘使用、系统负载、OOM 日志、僵尸进程、自定义规则、HTTP 服务
+// 发现异常时调用 AI 分析并推送告警
 func performPatrol() {
 	logger.Info("正在执行系统巡检...")
 	var anomalies []string
 
-	// 1. 磁盘检查
+	// 1. 磁盘使用率检查（过滤虚拟设备）
 	diskOut := utils.ExecuteShell("df -h")
 	diskLines := strings.Split(diskOut, "\n")
 
@@ -321,25 +453,25 @@ func performPatrol() {
 		}
 	}
 
-	// 2. 负载
+	// 2. 系统负载检查（1分钟负载 > 4.0 时告警）
 	if out := utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }' | awk '{ if ($1 > 4.0) print $0 }'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
 		anomalies = append(anomalies, "**高负载**:\n```\n"+strings.TrimSpace(out)+"\n```")
 	}
 
-	// 3. OOM
+	// 3. OOM（内存溢出）日志检查
 	dmesgOut := utils.ExecuteShell("dmesg | grep -i 'out of memory' | tail -n 5")
 	if !strings.Contains(dmesgOut, "Operation not permitted") && !strings.Contains(dmesgOut, "不允许的操作") && strings.TrimSpace(dmesgOut) != "" && !strings.Contains(dmesgOut, "exit status") {
 		anomalies = append(anomalies, "**OOM日志**:\n```\n"+strings.TrimSpace(dmesgOut)+"\n```")
 	}
 
-	// 4. 僵尸进程
+	// 4. 僵尸进程检查（状态为 Z 的进程）
 	rawZombies := utils.ExecuteShell("ps -A -o stat,ppid,pid,cmd | awk '$1 ~ /^[Zz]/'")
 	if strings.TrimSpace(rawZombies) != "" && !strings.Contains(rawZombies, "exit status") {
 		detailZombie := "STAT    PPID     PID CMD\n" + rawZombies
 		anomalies = append(anomalies, "**僵尸进程**:\n```\n"+strings.TrimSpace(detailZombie)+"\n```")
 	}
 
-	// 5. 自定义规则
+	// 5. 自定义巡检规则（从配置文件读取）
 	for _, rule := range config.GlobalConfig.PatrolRules {
 		out := utils.ExecuteShell(rule.Command)
 		if strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
@@ -348,7 +480,7 @@ func performPatrol() {
 		}
 	}
 
-	// 6. HTTP 监控
+	// 6. HTTP 服务健康检查
 	httpResults := monitor.RunChecks()
 	for _, res := range httpResults {
 		if !res.Success {
@@ -357,6 +489,7 @@ func performPatrol() {
 		}
 	}
 
+	// 过滤掉虚拟设备相关的告警（避免误报）
 	var cleanedAnomalies []string
 	for _, anomaly := range anomalies {
 		if !strings.Contains(anomaly, "/dev/loop") && 
@@ -369,13 +502,16 @@ func performPatrol() {
 		}
 	}
 
+	// 如果发现异常，调用 AI 分析并推送告警
 	if len(cleanedAnomalies) > 0 {
 		report := strings.Join(cleanedAnomalies, "\n")
 		logger.Info("🚨 发现异常，正在请求 AI 分析...")
+		
+		// 调用 AI 分析异常原因和解决方案
 		analysis := agent.AnalyzeWithAI(report)
-
 		analysis = cleanAIAnalysis(analysis)
 
+		// 组装告警消息并推送
 		alertMsg := fmt.Sprintf("🚨 **系统告警** [%s]\n\n%s\n\n💡 **处理建议**:\n%s", utils.GetHostname(), report, analysis)
 		notify.Send("系统告警", alertMsg)
 		logger.Info("告警已推送")
@@ -384,27 +520,34 @@ func performPatrol() {
 	}
 }
 
+// isIgnoredDisk 判断是否应该忽略该磁盘设备
+// 过滤虚拟设备和临时文件系统，避免误报
 func isIgnoredDisk(line, device, mountPoint string) bool {
-	// 检查设备名：过滤所有 loop 设备
+	// 检查设备名：过滤所有 loop 设备（虚拟块设备）
 	if strings.Contains(device, "/dev/loop") || strings.Contains(device, "loop") {
 		return true
 	}
-	// 检查挂载点：过滤所有 snap 相关路径（包括 /snap 和 /hostfs/snap）
+	
+	// 检查挂载点：过滤 snap 相关路径（Ubuntu snap 包）
 	if strings.Contains(mountPoint, "/snap") || 
 	   strings.Contains(mountPoint, "snap/") ||
 	   strings.Contains(mountPoint, "/hostfs") {
 		return true
 	}
+	
 	// 检查整行：过滤虚拟文件系统
-	if strings.Contains(line, "tmpfs") || 
-	   strings.Contains(line, "overlay") || 
-	   strings.Contains(line, "cdrom") ||
-	   strings.Contains(line, "efivarfs") {
+	if strings.Contains(line, "tmpfs") ||      // 临时文件系统
+	   strings.Contains(line, "overlay") ||    // Docker overlay 文件系统
+	   strings.Contains(line, "cdrom") ||      // 光驱
+	   strings.Contains(line, "efivarfs") {    // EFI 变量文件系统
 		return true
 	}
+	
 	return false
 }
 
+// cleanAIAnalysis 清理 AI 分析结果
+// 标记已过滤的虚拟设备，避免用户混淆
 func cleanAIAnalysis(analysis string) string {
 	analysis = strings.Replace(analysis, "/dev/loop", "[排除] /dev/loop", -1)
 	analysis = strings.Replace(analysis, "/snap", "[排除] /snap", -1)
