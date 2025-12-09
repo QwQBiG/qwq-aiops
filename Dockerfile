@@ -64,8 +64,10 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 
-# 将前端资源移动到正确位置（在 internal 复制之后）
-RUN cp -r ./frontend/dist ./internal/server/dist && rm -rf ./frontend
+# 将前端资源内容移动到正确位置（复制内容而不是目录本身）
+RUN mkdir -p ./internal/server/dist && \
+    cp -r ./frontend/dist/* ./internal/server/dist/ && \
+    rm -rf ./frontend
 
 # 验证前端文件（确保文件已正确复制）
 RUN echo "=== 前端资源验证 ===" && \
