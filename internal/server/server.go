@@ -114,10 +114,10 @@ func Start(port string) {
 				path = "index.html"
 			}
 			
-			// 检查文件是否存在
-			_, err := distFS.Open(path)
+			// 尝试直接读取文件（不先检查是否存在，避免 Open 的问题）
+			content, err := fs.ReadFile(distFS, path)
 			if err != nil {
-				// 文件不存在的处理逻辑
+				// 文件读取失败的处理逻辑
 				// 如果请求的是静态资源（JS、CSS、图片等），返回 404
 				// 如果是页面路由（如 /dashboard），返回 index.html 让 Vue Router 处理
 				if strings.HasPrefix(path, "assets/") || 
@@ -128,20 +128,22 @@ func Start(port string) {
 				   strings.HasSuffix(path, ".jpeg") || 
 				   strings.HasSuffix(path, ".svg") || 
 				   strings.HasSuffix(path, ".ico") ||
-				   strings.HasSuffix(path, ".json") {
-					// 静态资源不存在，返回 404
+				   strings.HasSuffix(path, ".json") ||
+				   strings.HasSuffix(path, ".woff") ||
+				   strings.HasSuffix(path, ".woff2") ||
+				   strings.HasSuffix(path, ".ttf") {
+					// 静态资源不存在，记录日志并返回 404
+					logger.Info("静态资源未找到: %s (错误: %v)", path, err)
 					http.NotFound(w, r)
 					return
 				}
 				// 页面路由不存在，返回 index.html（SPA fallback）
 				path = "index.html"
-			}
-			
-			// 读取文件内容
-			content, err := fs.ReadFile(distFS, path)
-			if err != nil {
-				http.Error(w, "文件读取失败: "+err.Error(), http.StatusInternalServerError)
-				return
+				content, err = fs.ReadFile(distFS, path)
+				if err != nil {
+					http.Error(w, "index.html 读取失败: "+err.Error(), http.StatusInternalServerError)
+					return
+				}
 			}
 			
 			// 根据文件扩展名设置正确的 Content-Type

@@ -57,28 +57,15 @@ COPY go.mod go.sum ./
 # 下载依赖
 RUN go mod download && go mod verify
 
+# 从前端构建阶段复制前端资源（先复制，创建目录结构）
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
 # 复制后端源码
 COPY cmd/ ./cmd/
+COPY internal/ ./internal/
 
-# 复制 internal 目录的各个子目录（避免整体复制导致覆盖问题）
-COPY internal/agent/ ./internal/agent/
-COPY internal/config/ ./internal/config/
-COPY internal/container/ ./internal/container/
-COPY internal/database/ ./internal/database/
-COPY internal/gateway/ ./internal/gateway/
-COPY internal/logger/ ./internal/logger/
-COPY internal/middleware/ ./internal/middleware/
-COPY internal/monitor/ ./internal/monitor/
-COPY internal/notify/ ./internal/notify/
-COPY internal/registry/ ./internal/registry/
-COPY internal/utils/ ./internal/utils/
-
-# 复制 internal/server 目录（但不包括 dist 子目录）
-COPY internal/server/*.go ./internal/server/
-
-# 从前端构建阶段复制前端资源到 internal/server/dist
-# 这一步必须在 Go 编译之前，确保 go:embed 能找到文件
-COPY --from=frontend-builder /app/frontend/dist ./internal/server/dist
+# 将前端资源移动到正确位置（在 internal 复制之后）
+RUN cp -r ./frontend/dist ./internal/server/dist && rm -rf ./frontend
 
 # 验证前端文件（确保文件已正确复制）
 RUN echo "=== 前端资源验证 ===" && \

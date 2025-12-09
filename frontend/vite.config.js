@@ -18,31 +18,9 @@ export default defineConfig({
     minify: 'esbuild',           // 使用 esbuild 压缩（更快，Vite 内置）
     chunkSizeWarningLimit: 1500, // chunk 大小警告阈值 (KB)
     
-    // Rollup 打包配置
-    rollupOptions: {
-      output: {
-        // 手动分包，优化加载性能
-        manualChunks(id) {
-          // node_modules 中的包按目录分组
-          if (id.includes('node_modules')) {
-            // Element Plus 相关（包括图标和依赖）
-            if (id.includes('element-plus') || id.includes('@element-plus')) {
-              return 'element-plus'
-            }
-            // Vue 核心生态
-            if (id.includes('vue') || id.includes('pinia') || id.includes('@vue')) {
-              return 'vue-vendor'
-            }
-            // ECharts 图表库
-            if (id.includes('echarts') || id.includes('zrender')) {
-              return 'echarts'
-            }
-            // 其他第三方库
-            return 'vendor'
-          }
-        }
-      }
-    }
+    // Rollup 打包配置 - 使用默认配置，不手动分包
+    // 让 Vite 自动优化，避免 embed 问题
+    rollupOptions: {}
   },
   
   // 开发服务器配置
