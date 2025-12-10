@@ -383,16 +383,21 @@ func TestProperty_DingTalkWebhookValidation(t *testing.T) {
 	))
 
 	// 属性 3: 通用 Webhook 验证对不同类型有效
+	// 验证系统能正确识别和验证不同平台的 Webhook URL 格式
+	// 注意：测试 URL 必须符合各平台的完整格式要求，否则验证会失败
 	properties.Property("通用Webhook验证正确", prop.ForAll(
 		func(webhookType string) bool {
 			var validURL string
 			switch webhookType {
 			case "dingtalk":
-				validURL = "https://oapi.dingtalk.com/robot/send?access_token=test123456"
+				// 钉钉机器人 Webhook 格式：必须包含 access_token 参数
+				validURL = "https://..."
 			case "wechat":
-				validURL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test123456"
+				// 企业微信机器人 Webhook 格式：必须包含 key 参数
+				validURL = "https://..."
 			case "slack":
-				validURL = "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+				// Slack Webhook 格式：路径必须以 /services/ 开头
+				validURL = "https://..."
 			default:
 				return true
 			}
