@@ -41,6 +41,8 @@ func main() {
 				config.GlobalConfig.DingTalkWebhook = strings.ReplaceAll(config.GlobalConfig.DingTalkWebhook, "\\", "")
 			}
 			agent.InitClient()
+			// 初始化通知服务
+			notify.InitNotificationService()
 			return nil
 		},
 	}

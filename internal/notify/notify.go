@@ -9,15 +9,68 @@ import (
 	"qwq/internal/logger"
 )
 
-func Send(title, content string) {
-	if config.GlobalConfig.DingTalkWebhook != "" {
-		go sendDingTalk(title, content)
-	}
-	if config.GlobalConfig.TelegramToken != "" && config.GlobalConfig.TelegramChatID != "" {
-		go sendTelegram(title, content)
-	}
+// 全局统一通知服务实例
+var globalNotificationService *UnifiedNotificationService
+
+// InitNotificationService 初始化全局通知服务
+func InitNotificationService() {
+	globalNotificationService = NewUnifiedNotificationService()
 }
 
+// Send 发送通知消息（保持向后兼容）
+func Send(title, content string) {
+	// 如果全局服务未初始化，使用原有逻辑
+	if globalNotificationService == nil {
+		if config.GlobalConfig.DingTalkWebhook != "" {
+			go sendDingTalk(title, content)
+		}
+		if config.GlobalConfig.TelegramToken != "" && config.GlobalConfig.TelegramChatID != "" {
+			go sendTelegram(title, content)
+		}
+		return
+	}
+
+	// 使用新的统一通知服务
+	go func() {
+		if err := globalNotificationService.SendAlert(title, content); err != nil {
+			logger.Info("❌ 通知发送失败: %v", err)
+		}
+	}()
+}
+
+// SendStatusReport 发送状态报告
+func SendStatusReport(report string) error {
+	if globalNotificationService == nil {
+		InitNotificationService()
+	}
+	return globalNotificationService.SendStatusReport(report)
+}
+
+// TestNotificationConnection 测试通知连接
+func TestNotificationConnection() error {
+	if globalNotificationService == nil {
+		InitNotificationService()
+	}
+	return globalNotificationService.TestConnection()
+}
+
+// ValidateNotificationConfig 验证通知配置
+func ValidateNotificationConfig() error {
+	if globalNotificationService == nil {
+		InitNotificationService()
+	}
+	return globalNotificationService.ValidateConfig()
+}
+
+// GetNotificationService 获取全局通知服务实例
+func GetNotificationService() NotificationService {
+	if globalNotificationService == nil {
+		InitNotificationService()
+	}
+	return globalNotificationService
+}
+
+// 原有的发送函数（保持向后兼容）
 func sendDingTalk(title, msg string) {
 	payload := map[string]interface{}{
 		"msgtype": "markdown",

@@ -106,13 +106,18 @@ const loadFiles = async (path) => {
   try {
     const res = await axios.get(`/api/files/list?path=${encodeURIComponent(path)}`)
     if (res.data.code === 200) {
-      files.value = res.data.data.files || []
+      // 确保返回的数据是数组格式，避免 reduce 错误
+      files.value = Array.isArray(res.data.data.files) ? res.data.data.files : []
       currentPath.value = res.data.data.path
     } else {
       ElMessage.error(res.data.msg)
+      files.value = []
     }
   } catch (e) {
+    console.error('加载失败:', e)
     ElMessage.error('加载失败: ' + e.message)
+    // 出错时设置为空数组，避免渲染错误
+    files.value = []
   } finally {
     loading.value = false
   }

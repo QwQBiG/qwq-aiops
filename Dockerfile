@@ -1,89 +1,86 @@
 # ============================================
-# qwq AIOps Platform - Multi-stage Dockerfile
-# Version: 1.0.0
+# qwq AIOps Platform - 修复版 Dockerfile
+# 解决前端 404 问题的完整方案
 # ============================================
 
-# --- Stage 1: Build Frontend (Vue 3) ---
+# --- Stage 1: 前端构建 ---
 FROM node:18-alpine AS frontend-builder
-
-LABEL stage=frontend-builder
-LABEL maintainer="qwq AIOps Team"
-
-WORKDIR /app/frontend
-
-# 使用国内 Alpine 镜像源加速
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
-
-# 设置 npm 国内镜像源
-RUN npm config set registry https://registry.npmmirror.com
-
-# 复制前端依赖配置和锁文件
-COPY frontend/package*.json ./
-
-# 安装依赖（使用 npm ci 更快更可靠）
-RUN npm ci
-
-# 复制前端源码
-COPY frontend/ .
-
-# 构建生产版本
-RUN npm run build
-
-# 清理不需要的文件
-RUN rm -rf node_modules src public
-
-# --- Stage 2: Build Backend (Go) ---
-FROM golang:1.23-alpine AS backend-builder
-
-LABEL stage=backend-builder
-LABEL maintainer="qwq AIOps Team"
 
 WORKDIR /app
 
-# 使用国内 Alpine 镜像源加速
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+# 使用国内镜像源加速
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    npm config set registry https://registry.npmmirror.com
 
-# 安装构建依赖
-RUN apk add --no-cache git ca-certificates
+# 复制前端项目文件
+COPY frontend/package*.json ./frontend/
+WORKDIR /app/frontend
 
-# 设置 Go 代理（使用国内镜像加速）
-ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+# 安装依赖（包含开发依赖，因为构建需要）
+RUN npm ci
+
+# 复制前端源码并构建
+COPY frontend/ .
+RUN npm run build
+
+# 验证前端构建结果
+RUN echo "=== 前端构建验证 ===" && \
+    ls -lh dist/ && \
+    echo "Assets 文件:" && \
+    ls -lh dist/assets/ | head -5 && \
+    echo "Plugin 文件:" && \
+    find dist -name "*plugin*" -type f
+
+# --- Stage 2: 后端构建 ---
+FROM golang:1.23-alpine AS backend-builder
+
+WORKDIR /app
+
+# 使用国内镜像源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk add --no-cache git ca-certificates
+
+# Go 环境配置
+ENV GOPROXY=https://goproxy.cn,direct
 ENV GO111MODULE=on
 ENV CGO_ENABLED=0
 
-# 复制 Go 模块文件
+# 下载 Go 依赖
 COPY go.mod go.sum ./
-
-# 下载依赖
 RUN go mod download && go mod verify
 
-# 从前端构建阶段复制前端资源（先复制，创建目录结构）
-COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+# 先创建目标目录结构
+RUN mkdir -p internal/server/dist
 
-# 复制后端源码
+# 从前端构建阶段复制构建产物到 Go embed 路径
+COPY --from=frontend-builder /app/frontend/dist ./internal/server/dist
+
+# 复制 Go 源码
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 
-# 将前端资源内容移动到正确位置（复制内容而不是目录本身）
-RUN mkdir -p ./internal/server/dist && \
-    cp -r ./frontend/dist/* ./internal/server/dist/ && \
-    rm -rf ./frontend
-
-# 验证前端文件（确保文件已正确复制）
-RUN echo "=== 前端资源验证 ===" && \
-    ls -lh ./internal/server/dist/ && \
-    echo "总文件数: $(find ./internal/server/dist -type f | wc -l)" && \
-    echo "index.html 存在: $(test -f ./internal/server/dist/index.html && echo '是' || echo '否')"
-
+# 最终验证：确保 Go embed 能找到文件
+RUN echo "=== Go Embed 路径验证 ===" && \
+    echo "当前目录: $(pwd)" && \
+    echo "internal/server/dist 内容:" && \
+    ls -la ./internal/server/dist/ && \
+    echo "Assets 目录:" && \
+    ls -la ./internal/server/dist/assets/ | head -10 && \
+    echo "Plugin 文件:" && \
+    find ./internal/server/dist -name "*plugin*" -type f && \
+    echo "文件总数: $(find ./internal/server/dist -type f | wc -l)" && \
+    echo "=== 验证关键文件 ===" && \
+    test -f ./internal/server/dist/assets/_plugin-vue_export-helper-DlAUqK2U.js && echo "✓ Plugin helper 文件存在" || echo "✗ Plugin helper 文件不存在" && \
+    echo "文件大小: $(ls -lh ./internal/server/dist/assets/_plugin-vue_export-helper-DlAUqK2U.js 2>/dev/null || echo '文件不存在')"
 # 编译 Go 程序
 ARG TARGETARCH
 RUN GOARCH=${TARGETARCH:-amd64} go build \
-    -ldflags="-w -s -X main.Version=1.0.0 -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -ldflags="-w -s -X main.Version=1.0.0" \
     -o qwq \
     ./cmd/qwq/main.go
 
-# 验证二进制文件
-RUN chmod +x qwq && ./qwq --version || true
+# 验证编译结果
+RUN chmod +x qwq && ls -lh qwq
 
 # --- Stage 3: Final Runtime Image ---
 FROM alpine:3.19

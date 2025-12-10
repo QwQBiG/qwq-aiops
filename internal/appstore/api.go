@@ -1,8 +1,6 @@
 package appstore
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -22,7 +20,7 @@ type APIService struct {
 func NewAPIService(db *gorm.DB) *APIService {
 	appStoreService := NewAppStoreService(db)
 	installerService := NewInstallerService(appStoreService)
-	recommendationService := NewRecommendationService(appStoreService)
+	recommendationService := NewRecommendationService(db, appStoreService)
 	
 	return &APIService{
 		appStoreService: appStoreService,
@@ -609,7 +607,10 @@ func (s *APIService) SearchTemplates(c *gin.Context) {
 	c.JSON(http.StatusOK, SuccessResponse(results))
 }
 
-// GetRecommendations 获取推荐
+// GetRecommendations 获取应用推荐
+// 根据用户上下文（用户ID、租户ID）智能推荐适合的应用模板
+// 推荐算法会考虑用户历史安装记录、租户偏好等因素
+//
 // @Summary 获取应用推荐
 // @Description 根据用户上下文获取应用推荐
 // @Tags search
@@ -620,15 +621,18 @@ func (s *APIService) SearchTemplates(c *gin.Context) {
 // @Success 200 {object} Response{data=[]AppRecommendation}
 // @Router /appstore/search/recommendations [get]
 func (s *APIService) GetRecommendations(c *gin.Context) {
+	// 解析用户ID和租户ID参数
 	userID, _ := strconv.ParseUint(c.Query("user_id"), 10, 32)
 	tenantID, _ := strconv.ParseUint(c.Query("tenant_id"), 10, 32)
 	
+	// 构建用户上下文，用于个性化推荐
 	userContext := &UserContext{
 		UserID:   uint(userID),
 		TenantID: uint(tenantID),
 	}
 	
-	recommendations, err := s.recommendationService.RecommendApplications(c.Request.Context(), userContext)
+	// 调用推荐服务获取推荐列表，限制返回 10 条结果
+	recommendations, err := s.recommendationService.GetRecommendations(c.Request.Context(), userContext, 10)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse(err))
 		return

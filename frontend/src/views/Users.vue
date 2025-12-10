@@ -223,9 +223,13 @@ const permissionTree = computed(() => {
 const loadUsers = async () => {
   try {
     const response = await axios.get('/api/users')
-    users.value = response.data
+    // 确保返回的数据是数组格式，避免 reduce 错误
+    users.value = Array.isArray(response.data) ? response.data : []
   } catch (error) {
+    console.error('加载用户列表失败:', error)
     ElMessage.error('加载用户列表失败')
+    // 出错时设置为空数组，避免渲染错误
+    users.value = []
   }
 }
 
@@ -233,9 +237,13 @@ const loadUsers = async () => {
 const loadRoles = async () => {
   try {
     const response = await axios.get('/api/roles')
-    roles.value = response.data
+    // 确保返回的数据是数组格式，避免 reduce 错误
+    roles.value = Array.isArray(response.data) ? response.data : []
   } catch (error) {
+    console.error('加载角色列表失败:', error)
     ElMessage.error('加载角色列表失败')
+    // 出错时设置为空数组，避免渲染错误
+    roles.value = []
   }
 }
 
@@ -243,9 +251,13 @@ const loadRoles = async () => {
 const loadPermissions = async () => {
   try {
     const response = await axios.get('/api/permissions')
-    permissions.value = response.data
+    // 确保返回的数据是数组格式，避免 reduce 错误
+    permissions.value = Array.isArray(response.data) ? response.data : []
   } catch (error) {
+    console.error('加载权限列表失败:', error)
     ElMessage.error('加载权限列表失败')
+    // 出错时设置为空数组，避免渲染错误
+    permissions.value = []
   }
 }
 

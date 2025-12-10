@@ -245,7 +245,7 @@ func ExampleAPIIntegration(db *gorm.DB) {
 	dbService := NewDatabaseService(db, encryptionKey)
 	
 	// 创建API
-	api := NewAPI(dbService)
+	_ = NewAPI(dbService)
 	
 	// 注册路由（需要Gin路由器）
 	// router := gin.Default()

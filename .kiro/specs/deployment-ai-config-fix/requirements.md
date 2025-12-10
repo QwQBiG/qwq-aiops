@@ -1,90 +1,76 @@
-# 部署和 AI 配置修复需求文档
+# 部署配置修复需求文档
 
-## 简介
+## 介绍
 
-qwq AIOps 平台的部署流程存在 AI 配置不一致的问题,导致用户无法正常部署。本需求旨在修复部署脚本、配置文件和文档,确保用户能够顺利完成部署。
+本文档定义了修复 qwq AIOps 平台部署配置问题的需求，主要解决前端无法交互、钉钉报警未配置以及跨平台兼容性问题。
 
 ## 术语表
 
-- **qwq**: qwq AIOps 智能运维平台
-- **AI Provider**: AI 服务提供商,如 OpenAI、Ollama
-- **docker-compose.yml**: Docker Compose 配置文件
-- **一键部署脚本**: 自动化部署脚本 (一键部署.sh)
-- **配置脚本**: AI 服务配置脚本 (配置AI服务.sh)
-- **环境变量**: Docker 容器的环境变量配置
+- **qwq AIOps 平台**: 企业级智能运维平台，提供容器管理、监控告警、AI 分析等功能
+- **前端交互**: 用户通过 Web 界面与系统进行操作的能力
+- **钉钉报警**: 通过钉钉 Webhook 发送系统告警和状态报告的功能
+- **跨平台兼容性**: 系统在 Windows 开发环境和 Ubuntu 生产环境中的一致性运行能力
+- **Docker Compose**: 用于定义和运行多容器 Docker 应用程序的工具
+- **前端资源嵌入**: 将前端构建产物打包到 Go 二进制文件中的过程
 
 ## 需求
 
-### 需求 1: docker-compose.yml 配置规范化
+### 需求 1
 
-**用户故事**: 作为部署人员,我希望 docker-compose.yml 中的 AI 配置清晰明确,以便我能够正确配置 AI 服务。
-
-#### 验收标准
-
-1. WHEN docker-compose.yml 被创建 THEN 系统应当将所有 AI 相关环境变量设置为注释状态,并提供清晰的配置示例
-2. WHEN 用户查看 docker-compose.yml THEN 系统应当在注释中明确说明 OpenAI 和 Ollama 两种配置方式的区别
-3. WHEN docker-compose.yml 包含 AI 配置 THEN 系统应当使用统一的注释格式,便于脚本进行替换操作
-4. WHEN 用户需要配置 OpenAI THEN docker-compose.yml 应当包含 AI_PROVIDER、OPENAI_API_KEY、OPENAI_BASE_URL 三个环境变量的配置示例
-5. WHEN 用户需要配置 Ollama THEN docker-compose.yml 应当包含 AI_PROVIDER、OLLAMA_HOST、OLLAMA_MODEL 三个环境变量的配置示例
-
-### 需求 2: 一键部署脚本修复
-
-**用户故事**: 作为部署人员,我希望一键部署脚本能够正确更新 docker-compose.yml 中的 AI 配置,以便我选择的 AI 服务能够生效。
+**用户故事:** 作为系统管理员，我希望前端界面能够正常加载和交互，以便通过 Web 界面管理系统。
 
 #### 验收标准
 
-1. WHEN 用户选择 OpenAI 并输入 API Key THEN 脚本应当正确取消 AI_PROVIDER 和 OPENAI_API_KEY 的注释,并填入用户提供的值
-2. WHEN 用户选择 Ollama 并输入服务地址 THEN 脚本应当正确取消 AI_PROVIDER 和 OLLAMA_HOST 的注释,并填入用户提供的值
-3. WHEN 用户选择跳过配置 THEN 脚本应当保持所有 AI 配置为注释状态,并在启动后给出明确的配置提示
-4. WHEN 脚本更新配置文件 THEN 系统应当确保只修改 AI 相关的环境变量,不影响其他配置
-5. WHEN 脚本执行完成 THEN 系统应当验证 docker-compose.yml 的语法正确性
+1. WHEN 用户访问系统 Web 界面 THEN 系统 SHALL 正确加载前端资源并显示完整的用户界面
+2. WHEN 前端资源构建完成 THEN 系统 SHALL 将所有必要的静态文件正确嵌入到 Go 二进制文件中
+3. WHEN 系统启动 THEN 系统 SHALL 验证前端资源的完整性并记录详细的调试信息
+4. WHEN 用户进行前端操作 THEN 系统 SHALL 正确响应 API 请求并返回预期的数据
+5. WHEN 前端资源缺失或损坏 THEN 系统 SHALL 提供清晰的错误信息和修复指导
 
-### 需求 3: 配置AI服务脚本修复
+### 需求 2
 
-**用户故事**: 作为运维人员,我希望配置AI服务.sh 脚本能够正确更新已部署系统的 AI 配置,以便我可以随时切换 AI 服务。
-
-#### 验收标准
-
-1. WHEN 用户运行配置脚本并选择 OpenAI THEN 脚本应当正确更新 docker-compose.yml 中的 OpenAI 配置,并注释掉 Ollama 配置
-2. WHEN 用户运行配置脚本并选择 Ollama THEN 脚本应当正确更新 docker-compose.yml 中的 Ollama 配置,并注释掉 OpenAI 配置
-3. WHEN 用户运行配置脚本并选择自定义 API THEN 脚本应当正确添加 OPENAI_BASE_URL 环境变量
-4. WHEN 脚本更新配置后 THEN 系统应当提示用户重启服务以使配置生效
-5. WHEN 脚本测试 Ollama 连接失败 THEN 系统应当给出明确的错误提示和解决方案
-
-### 需求 4: 部署文档统一和简化
-
-**用户故事**: 作为新用户,我希望部署文档清晰简洁,以便我能够快速理解如何部署和配置 AI 服务。
+**用户故事:** 作为运维人员，我希望系统能够通过钉钉发送告警和状态报告，以便及时了解系统状态。
 
 #### 验收标准
 
-1. WHEN 用户查看快速开始文档 THEN 系统应当在文档开头明确说明 AI 配置是必需的
-2. WHEN 用户查看部署指南 THEN 系统应当提供 OpenAI 和 Ollama 两种配置方式的对比表格
-3. WHEN 用户遇到 AI 配置问题 THEN 文档应当提供常见问题和解决方案
-4. WHEN 用户需要切换 AI 服务 THEN 文档应当提供明确的步骤说明
-5. WHEN 用户查看 AI配置说明.md THEN 系统应当提供完整的配置示例和测试方法
+1. WHEN 系统检测到异常情况 THEN 系统 SHALL 通过钉钉 Webhook 发送格式化的告警消息
+2. WHEN 配置钉钉 Webhook URL THEN 系统 SHALL 验证配置的有效性并提供配置指导
+3. WHEN 系统执行定时巡检 THEN 系统 SHALL 根据配置发送状态报告到钉钉群组
+4. WHEN 钉钉消息发送失败 THEN 系统 SHALL 记录详细的错误信息并提供故障排除建议
+5. WHEN 用户未配置通知渠道 THEN 系统 SHALL 提供清晰的配置提示和示例
 
-### 需求 5: 配置验证和错误提示
+### 需求 3
 
-**用户故事**: 作为部署人员,我希望系统能够验证 AI 配置的正确性,以便我能够及时发现和修复配置错误。
-
-#### 验收标准
-
-1. WHEN 服务启动时未配置 AI THEN 系统应当在日志中输出明确的错误信息和配置指引
-2. WHEN OpenAI API Key 无效 THEN 系统应当在启动时检测并给出明确的错误提示
-3. WHEN Ollama 服务无法连接 THEN 系统应当在启动时检测并给出明确的错误提示
-4. WHEN 用户访问健康检查接口 THEN 系统应当返回 AI 服务的连接状态
-5. WHEN AI 配置正确 THEN 系统应当在日志中输出 AI 服务类型和模型信息
-
-### 需求 6: 端口配置优化
-
-**用户故事**: 作为部署人员,我希望系统使用不常用的端口,以便避免与其他服务发生端口冲突。
+**用户故事:** 作为开发人员，我希望系统在 Windows 开发环境和 Ubuntu 生产环境中表现一致，以便确保部署的可靠性。
 
 #### 验收标准
 
-1. WHEN docker-compose.yml 配置服务端口 THEN 系统应当使用不常用的端口号,避免与常见服务冲突
-2. WHEN 用户部署 qwq 主服务 THEN 系统应当使用 8081 端口而非 8080 端口
-3. WHEN 用户部署 MySQL 服务 THEN 系统应当使用 3307 端口而非 3306 端口
-4. WHEN 用户部署 Redis 服务 THEN 系统应当使用 6380 端口而非 6379 端口
-5. WHEN 用户部署 Prometheus 服务 THEN 系统应当使用 9091 端口而非 9090 端口
-6. WHEN 端口被占用 THEN 部署文档应当提供清晰的端口修改指引
-7. WHEN 用户查看服务访问地址 THEN 所有文档应当使用统一的端口号(8081)
+1. WHEN 在 Windows 环境中开发 THEN 系统 SHALL 提供与 Ubuntu 生产环境一致的功能和行为
+2. WHEN 使用 Docker Compose 部署 THEN 系统 SHALL 正确处理不同操作系统的路径和权限差异
+3. WHEN 系统执行 Shell 命令 THEN 系统 SHALL 根据运行环境选择合适的命令语法和参数
+4. WHEN 进行跨平台构建 THEN 系统 SHALL 确保前端资源和后端二进制文件的正确生成
+5. WHEN 部署到不同环境 THEN 系统 SHALL 提供环境特定的配置验证和调试工具
+
+### 需求 4
+
+**用户故事:** 作为系统管理员，我希望有完整的配置管理和验证机制，以便快速诊断和解决部署问题。
+
+#### 验收标准
+
+1. WHEN 系统启动 THEN 系统 SHALL 验证所有必要的配置项并提供缺失配置的详细指导
+2. WHEN 配置文件不存在 THEN 系统 SHALL 自动创建示例配置文件并提供配置说明
+3. WHEN 执行配置验证 THEN 系统 SHALL 检查所有关键服务的连通性和配置正确性
+4. WHEN 发现配置问题 THEN 系统 SHALL 提供具体的修复步骤和命令示例
+5. WHEN 系统运行异常 THEN 系统 SHALL 提供诊断脚本和日志分析工具
+
+### 需求 5
+
+**用户故事:** 作为运维人员，我希望有自动化的部署验证和修复工具，以便快速解决常见的部署问题。
+
+#### 验收标准
+
+1. WHEN 执行部署验证 THEN 系统 SHALL 自动检查前端构建、配置文件、服务连通性等关键组件
+2. WHEN 检测到前端资源问题 THEN 系统 SHALL 自动重新构建前端并验证嵌入结果
+3. WHEN 发现配置缺失 THEN 系统 SHALL 自动生成默认配置并提示用户进行自定义
+4. WHEN 服务启动失败 THEN 系统 SHALL 提供详细的错误分析和自动修复建议
+5. WHEN 执行修复操作 THEN 系统 SHALL 记录修复过程并验证修复结果的有效性

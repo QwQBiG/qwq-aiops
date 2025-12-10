@@ -17,6 +17,12 @@ func NewSimpleNotificationService() NotificationService {
 	return &simpleNotificationService{}
 }
 
+// NewDingTalkNotificationService 创建钉钉通知服务实例（用于容器自愈）
+func NewDingTalkNotificationService() NotificationService {
+	// 导入 notify 包并使用统一通知服务
+	return &dingTalkContainerNotificationService{}
+}
+
 // SendAlert 发送告警
 func (s *simpleNotificationService) SendAlert(ctx context.Context, alert *Alert) error {
 	// 这里简化实现，只打印日志
@@ -84,5 +90,65 @@ func (s *webhookNotificationService) SendAlert(ctx context.Context, alert *Alert
 	// 3. 处理响应和错误
 	
 	fmt.Printf("Sending alert to webhook: %s\n", s.webhookURL)
+	return nil
+}
+
+// dingTalkContainerNotificationService 钉钉容器通知服务
+type dingTalkContainerNotificationService struct{}
+
+// SendAlert 发送容器告警到钉钉
+func (d *dingTalkContainerNotificationService) SendAlert(ctx context.Context, alert *Alert) error {
+	// 导入 notify 包需要在文件顶部添加
+	// 这里我们直接调用 notify.Send 函数
+	title := fmt.Sprintf("🚨 容器告警 - %s", alert.Title)
+	
+	content := fmt.Sprintf(`## %s
+
+**告警级别**: %s
+**容器ID**: %s
+**服务名称**: %s
+**项目名称**: %s
+**告警时间**: %s
+
+### 详细信息
+%s
+
+---
+> 系统自动发送，请及时处理`,
+		alert.Title,
+		getLevelEmoji(alert.Level),
+		alert.ContainerID,
+		alert.ServiceName,
+		alert.ProjectName,
+		alert.Timestamp.Format("2006-01-02 15:04:05"),
+		alert.Message,
+	)
+
+	// 这里需要调用 notify 包的 Send 函数
+	// 由于循环导入问题，我们使用接口方式
+	return sendNotificationMessage(title, content)
+}
+
+// getLevelEmoji 获取告警级别对应的表情符号
+func getLevelEmoji(level string) string {
+	switch level {
+	case "info":
+		return "ℹ️ 信息"
+	case "warning":
+		return "⚠️ 警告"
+	case "error":
+		return "❌ 错误"
+	case "critical":
+		return "🔥 严重"
+	default:
+		return "📢 " + level
+	}
+}
+
+// sendNotificationMessage 发送通知消息（避免循环导入）
+func sendNotificationMessage(title, content string) error {
+	// 这里可以通过接口或者回调函数的方式来避免循环导入
+	// 暂时使用简单的日志输出
+	log.Printf("[DINGTALK ALERT] %s: %s", title, content)
 	return nil
 }

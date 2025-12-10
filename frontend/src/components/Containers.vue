@@ -59,9 +59,13 @@ const fetchContainers = async () => {
   loading.value = true
   try {
     const res = await axios.get('/api/containers')
-    containers.value = res.data || []
+    // 确保返回的数据是数组格式，避免 reduce 错误
+    containers.value = Array.isArray(res.data) ? res.data : []
   } catch (e) {
+    console.error('获取容器列表失败:', e)
     ElMessage.error('获取容器列表失败')
+    // 出错时设置为空数组，避免渲染错误
+    containers.value = []
   } finally {
     loading.value = false
   }

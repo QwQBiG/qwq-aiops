@@ -118,21 +118,32 @@ const loadApps = async () => {
   try {
     // 获取所有可用应用模板
     const response = await axios.get('/api/appstore/templates')
-    apps.value = response.data.map(app => ({
+    // 确保返回的数据是数组格式
+    apps.value = Array.isArray(response.data) ? response.data.map(app => ({
       ...app,
       installed: false,
       installing: false,
       uninstalling: false
-    }))
+    })) : []
     
     // 获取已安装应用并更新状态
-    const installedResponse = await axios.get('/api/appstore/instances')
-    const installedIds = installedResponse.data.map(inst => inst.template_id)
-    apps.value.forEach(app => {
-      app.installed = installedIds.includes(app.id)
-    })
+    try {
+      const installedResponse = await axios.get('/api/appstore/instances')
+      if (Array.isArray(installedResponse.data)) {
+        const installedIds = installedResponse.data.map(inst => inst.template_id)
+        apps.value.forEach(app => {
+          app.installed = installedIds.includes(app.id)
+        })
+      }
+    } catch (e) {
+      // 忽略已安装应用获取失败，不影响主列表显示
+      console.warn('获取已安装应用失败:', e)
+    }
   } catch (error) {
+    console.error('加载应用列表失败:', error)
     ElMessage.error('加载应用列表失败')
+    // 出错时设置为空数组，避免渲染错误
+    apps.value = []
   }
 }
 

@@ -88,7 +88,12 @@ const fetchData = async () => {
     stats.value[3].value = tcpCount
     stats.value[3].percentage = Math.min((tcpCount / 1000) * 100, 100)
 
-    if (data.services) services.value = data.services
+    // 确保 services 是数组格式
+    if (data.services && Array.isArray(data.services)) {
+      services.value = data.services
+    } else {
+      services.value = []
+    }
   } catch (e) { console.error(e) }
 }
 

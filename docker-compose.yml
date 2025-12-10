@@ -11,8 +11,9 @@ services:
       - "8081:8080"  # 主服务端口（宿主机8081映射到容器8080）
     volumes:
       # Docker socket（用于容器管理）
-      # Windows 使用命名管道，Linux/Mac 使用 socket
-      - //var/run/docker.sock:/var/run/docker.sock:ro
+      # Windows Docker Desktop 会自动处理，Linux/Mac 使用 socket
+      # 注意：Windows 上 Docker Desktop 会自动映射，无需手动配置
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       # 数据持久化
       - ./data:/app/data
       - ./logs:/app/logs

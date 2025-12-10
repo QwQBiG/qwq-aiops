@@ -171,9 +171,13 @@ const connectionForm = ref({
 const loadConnections = async () => {
   try {
     const response = await axios.get('/api/databases/connections')
-    connections.value = response.data
+    // 确保返回的数据是数组格式
+    connections.value = Array.isArray(response.data) ? response.data : []
   } catch (error) {
+    console.error('加载连接列表失败:', error)
     ElMessage.error('加载连接列表失败')
+    // 出错时设置为空数组，避免渲染错误
+    connections.value = []
   }
 }
 

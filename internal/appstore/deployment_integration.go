@@ -9,6 +9,17 @@ import (
 	"gorm.io/gorm"
 )
 
+// InstanceStatus 实例状态类型
+type InstanceStatus string
+
+// 实例状态常量
+const (
+	InstanceStatusRunning  InstanceStatus = "running"
+	InstanceStatusStopped  InstanceStatus = "stopped"
+	InstanceStatusError    InstanceStatus = "error"
+	InstanceStatusUpdating InstanceStatus = "updating"
+)
+
 // DeploymentIntegration 部署集成服务接口
 // 负责将应用商店的安装流程与容器部署引擎集成，实现从模板到容器的完整部署流程
 type DeploymentIntegration interface {
@@ -104,8 +115,16 @@ func (d *deploymentIntegrationImpl) DeployFromTemplate(ctx context.Context, inst
 		return fmt.Errorf("获取应用模板失败: %w", err)
 	}
 
+	// 解析实例配置参数
+	var params map[string]interface{}
+	if instance.Config != "" {
+		if err := json.Unmarshal([]byte(instance.Config), &params); err != nil {
+			return fmt.Errorf("解析实例配置失败: %w", err)
+		}
+	}
+
 	// 渲染模板内容
-	renderedContent, err := d.appStoreService.RenderTemplate(ctx, template.ID, instance.Parameters)
+	renderedContent, err := d.appStoreService.RenderTemplate(ctx, template.ID, params)
 	if err != nil {
 		return fmt.Errorf("渲染模板失败: %w", err)
 	}
@@ -114,14 +133,14 @@ func (d *deploymentIntegrationImpl) DeployFromTemplate(ctx context.Context, inst
 	if d.containerService != nil {
 		if err := d.containerService.DeployCompose(ctx, renderedContent, instance.Name); err != nil {
 			// 部署失败，更新实例状态为错误
-			instance.Status = InstanceStatusError
+			instance.Status = string(InstanceStatusError)
 			_ = d.appStoreService.UpdateInstance(ctx, instance)
 			return fmt.Errorf("部署容器失败: %w", err)
 		}
 	}
 
 	// 更新实例状态为运行中
-	instance.Status = InstanceStatusRunning
+	instance.Status = string(InstanceStatusRunning)
 	if err := d.appStoreService.UpdateInstance(ctx, instance); err != nil {
 		return fmt.Errorf("更新实例状态失败: %w", err)
 	}
@@ -142,13 +161,21 @@ func (d *deploymentIntegrationImpl) UpdateDeployment(ctx context.Context, instan
 		return fmt.Errorf("获取应用模板失败: %w", err)
 	}
 
-	renderedContent, err := d.appStoreService.RenderTemplate(ctx, template.ID, instance.Parameters)
+	// 解析实例配置参数用于更新
+	var updateParams map[string]interface{}
+	if instance.Config != "" {
+		if err := json.Unmarshal([]byte(instance.Config), &updateParams); err != nil {
+			return fmt.Errorf("解析实例配置失败: %w", err)
+		}
+	}
+
+	renderedContent, err := d.appStoreService.RenderTemplate(ctx, template.ID, updateParams)
 	if err != nil {
 		return fmt.Errorf("渲染模板失败: %w", err)
 	}
 
 	// 更新实例状态为更新中
-	instance.Status = InstanceStatusUpdating
+	instance.Status = string(InstanceStatusUpdating)
 	if err := d.appStoreService.UpdateInstance(ctx, instance); err != nil {
 		return fmt.Errorf("更新实例状态失败: %w", err)
 	}
@@ -156,14 +183,14 @@ func (d *deploymentIntegrationImpl) UpdateDeployment(ctx context.Context, instan
 	// 调用容器引擎执行更新
 	if d.containerService != nil {
 		if err := d.containerService.UpdateCompose(ctx, instance.Name, renderedContent); err != nil {
-			instance.Status = InstanceStatusError
+			instance.Status = string(InstanceStatusError)
 			_ = d.appStoreService.UpdateInstance(ctx, instance)
 			return fmt.Errorf("更新容器失败: %w", err)
 		}
 	}
 
 	// 更新完成后恢复运行状态
-	instance.Status = InstanceStatusRunning
+	instance.Status = string(InstanceStatusRunning)
 	return d.appStoreService.UpdateInstance(ctx, instance)
 }
 
@@ -182,7 +209,7 @@ func (d *deploymentIntegrationImpl) StopDeployment(ctx context.Context, instance
 	}
 
 	// 更新实例状态为已停止
-	instance.Status = InstanceStatusStopped
+	instance.Status = string(InstanceStatusStopped)
 	return d.appStoreService.UpdateInstance(ctx, instance)
 }
 
@@ -201,7 +228,7 @@ func (d *deploymentIntegrationImpl) StartDeployment(ctx context.Context, instanc
 	}
 
 	// 更新实例状态为运行中
-	instance.Status = InstanceStatusRunning
+	instance.Status = string(InstanceStatusRunning)
 	return d.appStoreService.UpdateInstance(ctx, instance)
 }
 
@@ -250,6 +277,6 @@ func (d *deploymentIntegrationImpl) SyncDeploymentStatus(ctx context.Context, in
 		return fmt.Errorf("获取应用实例失败: %w", err)
 	}
 
-	instance.Status = InstanceStatus(statusInfo.Status)
+	instance.Status = statusInfo.Status
 	return d.appStoreService.UpdateInstance(ctx, instance)
 } 

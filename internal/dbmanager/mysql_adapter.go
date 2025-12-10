@@ -337,12 +337,12 @@ func (a *MySQLAdapter) GetTableIndexes(ctx context.Context, database, table stri
 }
 
 // GetExecutionPlan 获取SQL执行计划
-func (a *MySQLAdapter) GetExecutionPlan(ctx context.Context, sql string) (*ExecutionPlan, error) {
+func (a *MySQLAdapter) GetExecutionPlan(ctx context.Context, sqlQuery string) (*ExecutionPlan, error) {
 	if a.db == nil {
 		return nil, ErrConnectionFailed
 	}
 	
-	explainSQL := "EXPLAIN " + sql
+	explainSQL := "EXPLAIN " + sqlQuery
 	rows, err := a.db.QueryContext(ctx, explainSQL)
 	if err != nil {
 		return nil, fmt.Errorf("获取执行计划失败: %w", err)
