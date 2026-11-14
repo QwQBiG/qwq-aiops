@@ -9,8 +9,9 @@ if (args.some(arg => arg !== '--frontend-only') || args.length > 1) {
   console.error('Usage: node scripts/build.mjs [--frontend-only]')
   process.exit(1)
 }
-if (Number(process.versions.node.split('.')[0]) < 22) {
-  console.error('Node.js 22 or newer is required.')
+const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
+if (!((nodeMajor === 22 && nodeMinor >= 13) || nodeMajor >= 24)) {
+  console.error('Use Node.js 22.13 or newer in the 22.x line, or Node.js 24 or newer.')
   process.exit(1)
 }
 

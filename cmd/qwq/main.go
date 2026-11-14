@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"qwq/internal/agent"
 	"qwq/internal/config"
 	"qwq/internal/executor"
@@ -29,9 +32,17 @@ import (
 var configPath string
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := newRootCommand().ExecuteContext(ctx); err != nil {
+		os.Exit(1)
+	}
+}
+
+func newRootCommand() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "qwq",
-		Short: "OpsPilot - Enterprise AIOps Agent",
+		Short: "qwq Ops workbench",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if err := config.Init(configPath); err != nil {
 				return err
@@ -53,11 +64,11 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&config.GlobalConfig.WebPassword, "password", "", "Web Dashboard Password")
 	rootCmd.PersistentFlags().StringVar(&config.GlobalConfig.KnowledgeFile, "knowledge", "", "Path to knowledge base file")
 
-	rootCmd.AddCommand(&cobra.Command{Use: "chat", Short: "Interactive Mode", Run: runChatMode})
+	rootCmd.AddCommand(&cobra.Command{Use: "chat", Short: "Interactive Mode", RunE: runChatMode})
 	rootCmd.AddCommand(&cobra.Command{Use: "patrol", Short: "Patrol Mode", Run: runPatrolMode})
 	rootCmd.AddCommand(&cobra.Command{Use: "status", Short: "Send status", Run: runStatusMode})
-	rootCmd.AddCommand(&cobra.Command{Use: "web", Short: "Web Dashboard", Run: runWebMode})
-	rootCmd.AddCommand(&cobra.Command{Use: "gateway", Short: "API Gateway Mode", Run: runGatewayMode})
+	rootCmd.AddCommand(&cobra.Command{Use: "web", Short: "Web Dashboard", RunE: runWebMode})
+	rootCmd.AddCommand(&cobra.Command{Use: "gateway", Short: "API Gateway Mode", RunE: runGatewayMode})
 	
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "run [command]",
@@ -73,36 +84,44 @@ func main() {
 		},
 	})
 
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
-	}
+	return rootCmd
 }
 
 // runWebMode 启动 Web 控制台模式
 // 提供可视化界面和 API 服务，支持通过环境变量 PORT 自定义端口
-func runWebMode(cmd *cobra.Command, args []string) {
+func runWebMode(cmd *cobra.Command, args []string) error {
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
 	// 注册巡检和状态推送回调函数
-	server.TriggerPatrolFunc = performPatrol
-	server.TriggerStatusFunc = sendSystemStatus
+	server.TriggerPatrolFunc = func() { performPatrolContext(ctx) }
+	server.TriggerStatusFunc = func() { sendSystemStatusContext(ctx) }
 	
 	// 启动后台定时任务：每 8 小时执行一次巡检和日报
-	go runPatrolLoop(8 * time.Hour)
+	patrolDone := make(chan struct{})
+	go func() {
+		defer close(patrolDone)
+		runPatrolLoop(ctx, 8*time.Hour)
+	}()
 	
 	// 从环境变量读取服务端口，默认使用 8080
-	// 可通过 docker-compose.yml 或 .env 文件配置
+	// Compose passes PORT from its environment; standalone runs read process variables.
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 	
 	// 启动 HTTP 服务器
-	server.Start(":" + port)
+	err := server.Run(ctx, ":"+port)
+	cancel()
+	<-patrolDone
+	return err
 }
 
-// runGatewayMode 启动 API 网关模式
-// 提供统一的 API 入口，支持服务发现、负载均衡和路由转发
-func runGatewayMode(cmd *cobra.Command, args []string) {
-	logger.Info("🚀 启动增强版 API Gateway 模式")
+// runGatewayMode serves the console through a gateway and a loopback Web listener.
+func runGatewayMode(cmd *cobra.Command, args []string) error {
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+	logger.Info("启动控制台网关")
 	
 	// 从环境变量读取网关端口，默认 8080
 	port := os.Getenv("PORT")
@@ -116,37 +135,34 @@ func runGatewayMode(cmd *cobra.Command, args []string) {
 		webUIPort = "8899"
 	}
 	
-	// 创建增强版网关服务器
-	gatewayServer := gateway.NewEnhancedGatewayServer(":" + port)
-	
-	// 添加文档路由
-	gatewayServer.GetGateway().AddDocsRoutes()
+	gatewayServer := gateway.NewGatewayServer(":" + port)
 	
 	// 启动后台服务
-	server.TriggerPatrolFunc = performPatrol
-	server.TriggerStatusFunc = sendSystemStatus
-	go runPatrolLoop(8 * time.Hour)
-	
-	// 启动原有Web服务（作为微服务之一）
+	server.TriggerPatrolFunc = func() { performPatrolContext(ctx) }
+	server.TriggerStatusFunc = func() { sendSystemStatusContext(ctx) }
+	patrolDone := make(chan struct{})
 	go func() {
-		logger.Info("启动 Web UI 服务在端口 :%s", webUIPort)
-		server.Start(":" + webUIPort)
+		defer close(patrolDone)
+		runPatrolLoop(ctx, 8*time.Hour)
 	}()
 	
-	// 等待服务启动
-	time.Sleep(2 * time.Second)
-	
-	// 启动增强版网关
-	if err := gatewayServer.Start(); err != nil {
-		logger.Info("增强版网关启动失败: %v", err)
-		os.Exit(1)
+	// Stop both listeners and scheduled work when either listener exits.
+	errors := make(chan error, 2)
+	go func() { errors <- server.Run(ctx, "127.0.0.1:"+webUIPort) }()
+	go func() { errors <- gatewayServer.Run(ctx) }()
+	err := <-errors
+	cancel()
+	other := <-errors
+	<-patrolDone
+	if err != nil {
+		return err
 	}
+	return other
 }
 
 func runPatrolMode(cmd *cobra.Command, args []string) {
 	logger.Info("巡检模式启动 (无 Web 面板)")
-	go runPatrolLoop(8 * time.Hour)
-	waitForShutdown()
+	runPatrolLoop(cmd.Context(), 8*time.Hour)
 }
 
 func runStatusMode(cmd *cobra.Command, args []string) {
@@ -157,15 +173,24 @@ func runStatusMode(cmd *cobra.Command, args []string) {
 	sendSystemStatus()
 }
 
-func runChatMode(cmd *cobra.Command, args []string) {
-	rl, _ := readline.NewEx(&readline.Config{Prompt: "\033[32mqwq > \033[0m", HistoryFile: "/tmp/qwq_history"})
+func runChatMode(cmd *cobra.Command, args []string) error {
+	rl, err := readline.NewEx(&readline.Config{Prompt: "\033[32mqwq > \033[0m", HistoryFile: filepath.Join(os.TempDir(), "qwq_history")})
+	if err != nil {
+		return err
+	}
 	defer rl.Close()
 	fmt.Printf("\033[36m(qwq) Agent Online. System: %s\033[0m\n", runtime.GOOS)
 	
 	messages := agent.GetBaseMessages()
 
-	for {
-		line, _ := rl.Readline()
+	for cmd.Context().Err() == nil {
+		line, err := rl.Readline()
+		if err == io.EOF || err == readline.ErrInterrupt {
+			break
+		}
+		if err != nil {
+			return err
+		}
 		if line == "exit" { break }
 		if line == "" { continue }
 		
@@ -182,7 +207,7 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		quickCmd := agent.GetQuickCommand(line)
 		if quickCmd != "" {
 			fmt.Printf("\033[90m⚡ 快速执行: %s\033[0m\n", quickCmd)
-			output := utils.ExecuteShell(quickCmd)
+			output := utils.ExecuteShellContext(cmd.Context(), quickCmd)
 			if strings.TrimSpace(output) == "" { output = "(No output)" }
 			fmt.Println(output)
 			continue
@@ -194,63 +219,61 @@ func runChatMode(cmd *cobra.Command, args []string) {
 		messages = append(messages, openai.ChatCompletionMessage{Role: openai.ChatMessageRoleUser, Content: enhancedInput})
 		
 		for i := 0; i < 5; i++ {
-			respMsg, cont := agent.ProcessAgentStep(&messages)
+			respMsg, cont := agent.ProcessAgentStepForWebContext(cmd.Context(), &messages, func(string) {}, true)
 			
 			if respMsg.Content != "" && len(respMsg.ToolCalls) == 0 {
 				r, _ := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(100))
 				out, _ := r.Render(respMsg.Content)
 				fmt.Print(out)
 				
-				agent.CheckAndSaveFile(respMsg.Content)
 			}
 			
 			if !cont { break }
 		}
 	}
+	return nil
 }
 
-func waitForShutdown() {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
-	fmt.Println("\n正在关闭服务...")
-}
-
-func runPatrolLoop(interval time.Duration) {
+func runPatrolLoop(ctx context.Context, interval time.Duration) {
 	checkTicker := time.NewTicker(5 * time.Minute)
 	reportTicker := time.NewTicker(interval)
 	defer checkTicker.Stop()
 	defer reportTicker.Stop()
 	
 	// 启动时立即执行一次巡检
-	performPatrol()
+	performPatrolContext(ctx)
 	
 	// 启动时延迟一小段时间后发送第一次日报（避免和立即发送的冲突）
-	go func() {
-		time.Sleep(30 * time.Second)
-		sendSystemStatus()
-	}()
+	firstReport := time.NewTimer(30 * time.Second)
+	defer firstReport.Stop()
 	
 	logger.Info("📅 定时任务已启动: 巡检每5分钟, 日报每%v", interval)
 	
 	for {
 		select {
+		case <-ctx.Done():
+			return
+		case <-firstReport.C:
+			sendSystemStatusContext(ctx)
 		case <-checkTicker.C:
 			logger.Info("⏰ 定时巡检触发")
-			performPatrol()
+			performPatrolContext(ctx)
 		case <-reportTicker.C:
 			logger.Info("⏰ 定时日报触发")
-			sendSystemStatus()
+			sendSystemStatusContext(ctx)
 		}
 	}
 }
 
-func performPatrol() {
+func performPatrolContext(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
 	logger.Info("正在执行系统巡检...")
 	var anomalies []string
 
 	// 磁盘检查：在代码中解析和过滤，确保可靠过滤 loop、snap 等设备
-	diskOut := utils.ExecuteShell("df -h")
+	diskOut := utils.ExecuteShellContext(ctx, "df -h")
 	diskLines := strings.Split(diskOut, "\n")
 	var diskAlerts []string
 	
@@ -293,39 +316,42 @@ func performPatrol() {
 	if len(diskAlerts) > 0 {
 		anomalies = append(anomalies, "**磁盘告警**:\n```\n"+strings.Join(diskAlerts, "\n")+"\n```")
 	}
-	if out := utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }' | awk '{ if ($1 > 4.0) print $0 }'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
+	if out := utils.ExecuteShellContext(ctx, "uptime | awk -F'load average:' '{ print $2 }' | awk '{ if ($1 > 4.0) print $0 }'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
 		anomalies = append(anomalies, "**高负载**:\n```\n"+strings.TrimSpace(out)+"\n```")
 	}
-	dmesgOut := utils.ExecuteShell("dmesg | grep -i 'out of memory' | tail -n 5")
+	dmesgOut := utils.ExecuteShellContext(ctx, "dmesg | grep -i 'out of memory' | tail -n 5")
 	if !strings.Contains(dmesgOut, "Operation not permitted") && !strings.Contains(dmesgOut, "不允许的操作") && strings.TrimSpace(dmesgOut) != "" && !strings.Contains(dmesgOut, "exit status") {
 		anomalies = append(anomalies, "**OOM日志**:\n```\n"+strings.TrimSpace(dmesgOut)+"\n```")
 	}
-	rawZombies := utils.ExecuteShell("ps -A -o stat,ppid,pid,cmd | awk '$1 ~ /^[Zz]/'")
+	rawZombies := utils.ExecuteShellContext(ctx, "ps -A -o stat,ppid,pid,cmd | awk '$1 ~ /^[Zz]/'")
 	if strings.TrimSpace(rawZombies) != "" && !strings.Contains(rawZombies, "exit status") {
 		detailZombie := "STAT    PPID     PID CMD\n" + rawZombies
 		anomalies = append(anomalies, "**僵尸进程**:\n```\n"+strings.TrimSpace(detailZombie)+"\n```")
 	}
 
 	for _, rule := range config.GlobalConfig.PatrolRules {
-		out := utils.ExecuteShell(rule.Command)
+		out := utils.ExecuteShellContext(ctx, rule.Command)
 		if strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
-			logger.Info(fmt.Sprintf("⚠️ 触发自定义规则: %s", rule.Name))
+			logger.Info("⚠️ 触发自定义规则: %s", rule.Name)
 			anomalies = append(anomalies, fmt.Sprintf("**%s**:\n```\n%s\n```", rule.Name, strings.TrimSpace(out)))
 		}
 	}
 
-	httpResults := monitor.RunChecks()
+	httpResults := monitor.RunChecksContext(ctx)
 	for _, res := range httpResults {
 		if !res.Success {
-			logger.Info(fmt.Sprintf("⚠️ HTTP 监控失败: %s", res.Name))
+			logger.Info("⚠️ HTTP 监控失败: %s", res.Name)
 			anomalies = append(anomalies, fmt.Sprintf("**HTTP异常 (%s)**:\n%s", res.Name, res.Error))
 		}
 	}
 
+	if ctx.Err() != nil {
+		return
+	}
 	if len(anomalies) > 0 {
 		report := strings.Join(anomalies, "\n")
 		logger.Info("🚨 发现异常，正在请求 AI 分析...")
-		analysis := agent.AnalyzeWithAI(report)
+		analysis := agent.AnalyzeWithAIContext(ctx, report)
 		alertMsg := fmt.Sprintf("🚨 **系统告警** [%s]\n\n%s\n\n💡 **处理建议**:\n%s", utils.GetHostname(), report, analysis)
 		notify.Send("系统告警", alertMsg)
 		logger.Info("告警已推送")
@@ -335,6 +361,13 @@ func performPatrol() {
 }
 
 func sendSystemStatus() {
+	sendSystemStatusContext(context.Background())
+}
+
+func sendSystemStatusContext(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
 	// 检查是否有配置通知渠道
 	if config.GlobalConfig.DingTalkWebhook == "" && 
 	   (config.GlobalConfig.TelegramToken == "" || config.GlobalConfig.TelegramChatID == "") {
@@ -345,37 +378,37 @@ func sendSystemStatus() {
 	hostname := utils.GetHostname()
 	
 	// 获取IP地址（多种方法尝试）
-	ip := strings.TrimSpace(utils.ExecuteShell("ip route get 1 2>/dev/null | awk '{print $7; exit}' || hostname -I 2>/dev/null | awk '{print $1}' || echo 'N/A'"))
+	ip := strings.TrimSpace(utils.ExecuteShellContext(ctx, "ip route get 1 2>/dev/null | awk '{print $7; exit}' || hostname -I 2>/dev/null | awk '{print $1}' || echo 'N/A'"))
 	if ip == "" || strings.Contains(ip, "exit status") {
 		ip = "N/A"
 	}
 	
 	// 获取运行时间
-	uptime := strings.TrimSpace(utils.ExecuteShell("uptime -p 2>/dev/null || uptime | awk -F'up' '{print $2}' | awk '{print $1,$2,$3}'"))
+	uptime := strings.TrimSpace(utils.ExecuteShellContext(ctx, "uptime -p 2>/dev/null || uptime | awk -F'up' '{print $2}' | awk '{print $1,$2,$3}'"))
 	if uptime == "" || strings.Contains(uptime, "exit status") {
 		uptime = "N/A"
 	}
 	
 	// 获取内存信息
-	memInfo := strings.TrimSpace(utils.ExecuteShell("free -m | awk 'NR==2{printf \"%.1f%% (已用 %sM / 总计 %sM)\", $3/$2*100, $3, $2}'"))
+	memInfo := strings.TrimSpace(utils.ExecuteShellContext(ctx, "free -m | awk 'NR==2{printf \"%.1f%% (已用 %sM / 总计 %sM)\", $3/$2*100, $3, $2}'"))
 	if memInfo == "" || strings.Contains(memInfo, "exit status") {
 		memInfo = "N/A"
 	}
 	
 	// 获取磁盘信息（只检查根目录，过滤掉 loop 设备）
-	diskInfo := strings.TrimSpace(utils.ExecuteShell("df -h / 2>/dev/null | awk 'NR==2 {print $5 \" (剩余 \" $4 \")\"}'"))
+	diskInfo := strings.TrimSpace(utils.ExecuteShellContext(ctx, "df -h / 2>/dev/null | awk 'NR==2 {print $5 \" (剩余 \" $4 \")\"}'"))
 	if diskInfo == "" || strings.Contains(diskInfo, "exit status") {
 		diskInfo = "N/A"
 	}
 	
 	// 获取负载信息
-	loadInfo := strings.TrimSpace(utils.ExecuteShell("uptime | awk -F'load average:' '{ print $2 }' | sed 's/^ *//'"))
+	loadInfo := strings.TrimSpace(utils.ExecuteShellContext(ctx, "uptime | awk -F'load average:' '{ print $2 }' | sed 's/^ *//'"))
 	if loadInfo == "" || strings.Contains(loadInfo, "exit status") {
 		loadInfo = "N/A"
 	}
 	
 	// 获取TCP连接数（多种方法尝试）
-	tcpConn := strings.TrimSpace(utils.ExecuteShell("ss -s 2>/dev/null | grep 'TCP:' | grep -oE 'estab [0-9]+' | awk '{print $2}' || netstat -ant 2>/dev/null | grep ESTABLISHED | wc -l || echo '0'"))
+	tcpConn := strings.TrimSpace(utils.ExecuteShellContext(ctx, "ss -s 2>/dev/null | grep 'TCP:' | grep -oE 'estab [0-9]+' | awk '{print $2}' || netstat -ant 2>/dev/null | grep ESTABLISHED | wc -l || echo '0'"))
 	if tcpConn == "" || strings.Contains(tcpConn, "exit status") {
 		tcpConn = "0"
 	}
@@ -403,6 +436,9 @@ func sendSystemStatus() {
 *qwq AIOps 自动监控*
 `, hostname, ip, uptime, currentTime, loadInfo, memInfo, diskInfo, tcpConn)
 	
+	if ctx.Err() != nil {
+		return
+	}
 	notify.Send("服务器状态日报", report)
 	logger.Info("✅ 健康日报已发送 [%s]", hostname)
 }

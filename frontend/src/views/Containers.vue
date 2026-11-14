@@ -1,94 +1,73 @@
 <template>
-  <div class="containers">
-    <el-card class="box-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span>容器列表</span>
-          <el-button type="primary" size="small" @click="fetchContainers">
-            <el-icon><Refresh /></el-icon> 刷新
-          </el-button>
-        </div>
-      </template>
-      
-      <el-table :data="containers" style="width: 100%" v-loading="loading">
-        <el-table-column prop="name" label="名称" width="200" />
-        <el-table-column prop="image" label="镜像" show-overflow-tooltip />
-        <el-table-column prop="status" label="状态" width="220" />
-        <el-table-column label="运行状态" width="100">
-          <template #default="scope">
-            <el-tag :type="scope.row.state === 'running' ? 'success' : 'info'" size="small" effect="dark">
-              {{ scope.row.state === 'running' ? '运行中' : '已停止' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
-          <template #default="scope">
-            <el-button-group>
-              <el-button 
-                v-if="scope.row.state !== 'running'" 
-                type="success" size="small" link 
-                @click="handleAction(scope.row.id, 'start')">
-                启动
-              </el-button>
-              <el-button 
-                v-if="scope.row.state === 'running'" 
-                type="danger" size="small" link 
-                @click="handleAction(scope.row.id, 'stop')">
-                停止
-              </el-button>
-              <el-button type="primary" size="small" link @click="handleAction(scope.row.id, 'restart')">
-                重启
-              </el-button>
-            </el-button-group>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-  </div>
+  <el-card shadow="never">
+    <template #header>
+      <div class="toolbar"><span>{{ t('menu.containers') }}</span><el-button :loading="loading" @click="fetchContainers">{{ t('common.refresh') }}</el-button></div>
+    </template>
+    <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+    <el-table :data="containers" v-loading="loading" :empty-text="t('console.empty')">
+      <el-table-column prop="name" :label="t('console.name')" min-width="160" />
+      <el-table-column prop="image" :label="t('containers.image')" show-overflow-tooltip />
+      <el-table-column prop="status" :label="t('console.status')" min-width="160" />
+      <el-table-column :label="t('containers.state')" width="150">
+        <template #default="{ row }"><el-tag :type="row.state === 'running' ? 'success' : 'info'">{{ row.state }}</el-tag></template>
+      </el-table-column>
+      <el-table-column :label="t('console.actions')" width="210" fixed="right">
+        <template #default="{ row }">
+          <el-button v-if="row.state !== 'running'" link type="success" :disabled="!!pending" @click="handleAction(row, 'start')">{{ t('containers.start') }}</el-button>
+          <el-button v-else link type="danger" :disabled="!!pending" @click="handleAction(row, 'stop')">{{ t('containers.stop') }}</el-button>
+          <el-button link type="primary" :loading="pending === row.id" :disabled="!!pending" @click="handleAction(row, 'restart')">{{ t('containers.restart') }}</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+  </el-card>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
-
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { errorMessage, isCancellation } from '../lib/errors'
+const { t } = useI18n()
 const containers = ref([])
 const loading = ref(false)
+const pending = ref('')
+const error = ref('')
+const controller = new AbortController()
 
-const fetchContainers = async () => {
+async function fetchContainers() {
+  if (loading.value) return
   loading.value = true
   try {
-    const res = await axios.get('/api/containers')
-    // 确保返回的数据是数组格式，避免 reduce 错误
-    containers.value = Array.isArray(res.data) ? res.data : []
-  } catch (e) {
-    console.error('获取容器列表失败:', e)
-    ElMessage.error('获取容器列表失败')
-    // 出错时设置为空数组，避免渲染错误
-    containers.value = []
+    const { data } = await axios.get('/api/containers', { signal: controller.signal })
+    containers.value = Array.isArray(data) ? data : []
+    error.value = ''
+  } catch (failure) {
+    if (!isCancellation(failure)) error.value = errorMessage(failure, t('console.requestFailed'))
   } finally {
     loading.value = false
   }
 }
 
-const handleAction = async (id, action) => {
+async function handleAction(row, action) {
+  if (pending.value) return
+  pending.value = row.id
   try {
-    await axios.post('/api/container/action', null, { params: { id, action } })
-    ElMessage.success('操作指令已发送')
-    setTimeout(fetchContainers, 1000)
-  } catch (e) {
-    ElMessage.error(e.response?.data?.msg || e.response?.data?.error || '操作失败')
+    if (action !== 'start') await ElMessageBox.confirm(t('containers.confirmAction', { action: t(`containers.${action}`), name: row.name }), t('common.warning'), { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') })
+    await axios.post('/api/container/action', null, { params: { id: row.id, action }, signal: controller.signal })
+    ElMessage.success(t('console.saved'))
+    await fetchContainers()
+  } catch (failure) {
+    if (!isCancellation(failure)) ElMessage.error(errorMessage(failure, t('console.requestFailed')))
+  } finally {
+    pending.value = ''
   }
 }
-
-onMounted(() => {
-  fetchContainers()
-})
+onMounted(fetchContainers)
+onUnmounted(() => controller.abort())
 </script>
 
 <style scoped>
-.box-card { background: #1d2129; border: 1px solid #2c3038; color: #fff; }
-.card-header { display: flex; justify-content: space-between; align-items: center; }
-:deep(.el-table) { background-color: transparent; --el-table-tr-bg-color: transparent; --el-table-header-bg-color: #161920; --el-table-text-color: #c9cdd4; --el-table-border-color: #2c3038; --el-table-row-hover-bg-color: #272b36 !important; }
-:deep(.el-card__header) { border-bottom: 1px solid #2c3038; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; }
+.el-alert { margin-bottom: 16px; }
 </style>

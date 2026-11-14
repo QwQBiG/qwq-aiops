@@ -18,7 +18,7 @@ import (
 const (
 	DefaultModel   = "Qwen/Qwen2.5-7B-Instruct"
 	DefaultBaseURL = "https://api.siliconflow.cn/v1"
-	Version        = "v3.2.0 Enterprise"
+	Version        = "development"
 )
 
 var Client *openai.Client
@@ -38,7 +38,7 @@ var Tools = []openai.Tool{
 		Type: openai.ToolTypeFunction,
 		Function: &openai.FunctionDefinition{
 			Name:        "execute_shell_command",
-			Description: "Execute a shell command on the local Linux/MacOS system.",
+			Description: "Execute an allowed read-only command on the local system.",
 			Parameters: json.RawMessage(`{
 				"type": "object",
 				"properties": {
@@ -99,15 +99,15 @@ func CheckStaticResponse(input string) string {
 	
 	// 1. 身份/版本类
 	if input == "你好" || input == "你是谁" || input == "版本" || input == "version" || input == "whoami" || strings.Contains(input, "介绍") {
-		return fmt.Sprintf(`**qwq-aiops %s**
+		return fmt.Sprintf(`**qwq Ops %s**
 --------------------------------
-我是您的私有化智能运维专家。
+我可以查询服务进程所在机器的系统状态，并协助整理配置示例。
 
 **核心能力：**
 1. 🛠️ **自动巡检**：监控系统负载、Docker、K8s 状态。
 2. ⚡ **命令执行**：直接执行 "看看内存"、"查负载"。
 3. 📝 **配置生成**：生成 YAML、Python 脚本。
-4. 🔒 **安全风控**：高危命令自动拦截。
+4. 🔒 **命令边界**：仅自动执行允许的只读查询。
 
 *请直接下达运维指令，例如：“看看内存” 或 “生成 nginx yaml”。*`, Version)
 	}
@@ -116,7 +116,7 @@ func CheckStaticResponse(input string) string {
 	if input == "help" || input == "帮助" || input == "能做什么" {
 		return `**可用指令示例：**
 - 🔍 **查询**：看看内存、查负载、看Docker容器、看K8s Pod
-- ⚙️ **操作**：重启 nginx (需确认)、清理磁盘
+- ⚙️ **修改操作**：请在独立终端中确认后执行
 - 📄 **生成**：写一个 busybox yaml、生成 python hello world
 - 📊 **报表**：生成系统状态日报`
 	}
@@ -132,12 +132,12 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 
 	sysPrompt := fmt.Sprintf(`你是一个 **Linux 运维终端**。
 当前环境：**Linux Server**。
-用户身份：**Root 管理员**。
+操作权限以当前服务进程的用户权限为准。
 
 【决策逻辑】
 1. **模糊名词处理**：
    - 如果用户只说一个名词（如 "nginx", "qwq-ops", "mysql"），**默认意图是查询其运行状态**。
-   - **必须**执行 'ps aux | grep xxx' 或 'docker ps | grep xxx'。
+   - 使用只读命令，如 'ps aux' 或 'docker ps --filter name=xxx'。
    - **严禁**生成清理日志、备份等维护脚本，除非用户明确要求。
 
 2. **查询系统状态**：
@@ -156,31 +156,15 @@ func GetBaseMessages() []openai.ChatCompletionMessage {
 
 	return []openai.ChatCompletionMessage{
 		{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
-		
-		// 样本 1: 名词 -> 查状态
-		{Role: openai.ChatMessageRoleUser, Content: "看看 nginx"},
-		{
-			Role: openai.ChatMessageRoleAssistant,
-			ToolCalls: []openai.ToolCall{{
-				ID: "call_1", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "ps aux | grep nginx", "reason": "check nginx process"}`},
-			}},
-		},
-
-		// 样本 2: 运维查询
-		{Role: openai.ChatMessageRoleUser, Content: "看看内存"},
-		{
-			Role: openai.ChatMessageRoleAssistant,
-			ToolCalls: []openai.ToolCall{{
-				ID: "call_2", Type: openai.ToolTypeFunction,
-				Function: openai.FunctionCall{Name: "execute_shell_command", Arguments: `{"command": "free -m", "reason": "check memory"}`},
-			}},
-		},
 	}
 }
 
 func AnalyzeWithAI(issue string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	return AnalyzeWithAIContext(context.Background(), issue)
+}
+
+func AnalyzeWithAIContext(ctx context.Context, issue string) string {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
 	msgs := GetBaseMessages()
@@ -192,7 +176,10 @@ func AnalyzeWithAI(issue string) string {
 		Temperature: 0.0,
 	})
 	if err != nil {
-		return "AI Error: " + err.Error()
+		return "Model request failed: " + err.Error()
+	}
+	if len(resp.Choices) == 0 {
+		return "Model request failed: response contained no choices"
 	}
 	return resp.Choices[0].Message.Content
 }
@@ -204,7 +191,10 @@ func ProcessAgentStep(msgs *[]openai.ChatCompletionMessage) (openai.ChatCompleti
 }
 
 func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback func(string), isCLI ...bool) (openai.ChatCompletionMessage, bool) {
-	ctx := context.Background()
+	return ProcessAgentStepForWebContext(context.Background(), msgs, logCallback, isCLI...)
+}
+
+func ProcessAgentStepForWebContext(ctx context.Context, msgs *[]openai.ChatCompletionMessage, logCallback func(string), isCLI ...bool) (openai.ChatCompletionMessage, bool) {
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	
@@ -219,13 +209,17 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		logCallback(fmt.Sprintf("API Error: %v", err))
 		return openai.ChatCompletionMessage{}, false
 	}
+	if len(resp.Choices) == 0 {
+		logCallback("Model response contained no choices")
+		return openai.ChatCompletionMessage{}, false
+	}
 	msg := resp.Choices[0].Message
 	*msgs = append(*msgs, msg)
 
 	// 1. 处理 Tool Calls
 	if len(msg.ToolCalls) > 0 {
 		for _, toolCall := range msg.ToolCalls {
-			handleToolCall(toolCall, msgs, logCallback)
+			handleToolCallContext(ctx, toolCall, msgs, logCallback)
 		}
 		return msg, true
 	}
@@ -246,7 +240,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 					fmt.Printf("\033[31m❌ 保存失败: %v\033[0m\n", err)
 				}
 			}
-			return msg, true
+			return msg, false
 		}
 	}
 
@@ -255,7 +249,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 	if cmd != "" {
 		if isSafeAutoCommand(cmd) {
 			logCallback(fmt.Sprintf("⚡ (自动捕获命令): %s", cmd))
-			output := utils.ExecuteShell(cmd)
+			output := utils.ExecuteShellContext(ctx, cmd)
 			if strings.TrimSpace(output) == "" { output = "(No output)" }
 			
 			feedback := fmt.Sprintf("[System Output]:\n%s", output)
@@ -269,7 +263,7 @@ func ProcessAgentStepForWeb(msgs *[]openai.ChatCompletionMessage, logCallback fu
 		}
 	}
 
-	return msg, true
+	return msg, false
 }
 
 // CLI 后处理
@@ -292,12 +286,26 @@ func CheckAndSaveFile(content string) {
 }
 
 func handleToolCall(toolCall openai.ToolCall, msgs *[]openai.ChatCompletionMessage, logCallback func(string)) {
+	handleToolCallContext(context.Background(), toolCall, msgs, logCallback)
+}
+
+func handleToolCallContext(ctx context.Context, toolCall openai.ToolCall, msgs *[]openai.ChatCompletionMessage, logCallback func(string)) {
+	if toolCall.Function.Name != "execute_shell_command" {
+		addToolOutput(msgs, toolCall.ID, "Error: unsupported tool.")
+		return
+	}
 	if toolCall.Function.Name == "execute_shell_command" {
 		var args map[string]string
-		json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
+		if err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args); err != nil {
+			addToolOutput(msgs, toolCall.ID, "Error: invalid command arguments.")
+			return
+		}
 		cmdStr := strings.TrimSpace(args["command"])
 		reason := args["reason"]
-		if cmdStr == "" { return }
+		if cmdStr == "" {
+			addToolOutput(msgs, toolCall.ID, "Error: command is required.")
+			return
+		}
 
 		logCallback(fmt.Sprintf("⚡ 意图: %s", reason))
 		logCallback(fmt.Sprintf("👉 命令: %s", cmdStr))
@@ -316,7 +324,7 @@ func handleToolCall(toolCall openai.ToolCall, msgs *[]openai.ChatCompletionMessa
 			return
 		}
 
-		output := utils.ExecuteShell(cmdStr)
+		output := utils.ExecuteShellContext(ctx, cmdStr)
 		if strings.TrimSpace(output) == "" { output = "(No output)" }
 		addToolOutput(msgs, toolCall.ID, output)
 	}
@@ -397,26 +405,5 @@ func extractCodeBlock(text string) (string, string) {
 }
 
 func isSafeAutoCommand(cmd string) bool {
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 { return false }
-	mainCmd := parts[0]
-
-	whitelist := []string{
-		"ls", "pwd", "cat", "head", "tail", "grep", "find",
-		"ps", "top", "htop", "free", "df", "du", "uptime", "w",
-		"netstat", "ss", "lsof", "ip", "ifconfig", 
-		"docker", "kubectl", "systemctl", "service", "journalctl",
-		"whoami", "id", "uname", "date", "history",
-		"hostname",
-	}
-
-	for _, c := range whitelist {
-		if mainCmd == c {
-			if strings.Contains(cmd, ">") || strings.Contains(cmd, "| bash") || strings.Contains(cmd, "| sh") {
-				return false
-			}
-			return true
-		}
-	}
-	return false
+	return utils.IsReadOnlyCommand(cmd)
 }

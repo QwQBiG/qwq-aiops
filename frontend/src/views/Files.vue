@@ -4,47 +4,47 @@
     <el-card class="box-card" shadow="never">
       <div class="toolbar">
         <div class="breadcrumb">
-          <el-button link @click="loadFiles('/')"><el-icon><HomeFilled /></el-icon></el-button>
+          <el-button link :aria-label="t('files.root')" @click="loadFiles('/')"><el-icon><HomeFilled /></el-icon></el-button>
           <span v-for="(part, index) in pathParts" :key="index">
             <span class="separator">/</span>
             <el-button link @click="loadFiles(buildPath(index))">{{ part }}</el-button>
           </span>
         </div>
         <div class="actions">
-          <el-button type="primary" size="small" @click="refresh"><el-icon><Refresh /></el-icon></el-button>
-          <el-button type="success" size="small" @click="showMkdir = true"><el-icon><FolderAdd /></el-icon> 新建目录</el-button>
+          <el-button type="primary" size="small" :aria-label="t('common.refresh')" @click="refresh"><el-icon><Refresh /></el-icon></el-button>
+          <el-button type="success" size="small" @click="showMkdir = true"><el-icon><FolderAdd /></el-icon> {{ t('files.newDirectory') }}</el-button>
         </div>
       </div>
     </el-card>
 
     <!-- 文件列表 -->
     <el-card class="list-card" shadow="never" v-loading="loading">
-      <el-table :data="files" style="width: 100%" @row-click="handleRowClick" empty-text="暂无文件或无权限访问">
+      <el-table :data="files" style="width: 100%" @row-click="handleRowClick" :empty-text="t('files.empty')">
         <el-table-column width="50">
           <template #default="scope">
             <el-icon v-if="scope.row.is_dir" class="icon-dir"><Folder /></el-icon>
             <el-icon v-else class="icon-file"><Document /></el-icon>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="名称" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="size" label="大小" width="120">
+        <el-table-column prop="name" :label="t('console.name')" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="size" :label="t('files.size')" width="120">
           <template #default="scope">
             {{ scope.row.is_dir ? '-' : formatSize(scope.row.size) }}
           </template>
         </el-table-column>
-        <el-table-column prop="mode" label="权限" width="120" />
-        <el-table-column prop="mod_time" label="修改时间" width="180" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column prop="mode" :label="t('files.permissions')" width="120" />
+        <el-table-column prop="mod_time" :label="t('files.modified')" width="180" />
+        <el-table-column :label="t('console.actions')" width="150" fixed="right">
           <template #default="scope">
-            <el-button v-if="!scope.row.is_dir" link type="primary" @click.stop="editFile(scope.row)">编辑</el-button>
-            <el-button link type="danger" @click.stop="deleteFile(scope.row)">删除</el-button>
+            <el-button v-if="!scope.row.is_dir" link type="primary" @click.stop="editFile(scope.row)">{{ t('common.edit') }}</el-button>
+            <el-button link type="danger" @click.stop="deleteFile(scope.row)">{{ t('common.delete') }}</el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-card>
 
     <!-- 编辑器弹窗 -->
-    <el-dialog v-model="showEditor" :title="'编辑: ' + currentFile" width="70%" top="5vh">
+    <el-dialog v-model="showEditor" :title="t('common.edit') + ': ' + currentFile" width="70%" top="5vh">
       <el-input
         v-model="fileContent"
         type="textarea"
@@ -54,17 +54,17 @@
       />
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="showEditor = false">取消</el-button>
-          <el-button type="primary" @click="saveFile" :loading="saving">保存</el-button>
+          <el-button @click="showEditor = false">{{ t('common.cancel') }}</el-button>
+          <el-button type="primary" @click="saveFile" :loading="saving">{{ t('common.save') }}</el-button>
         </span>
       </template>
     </el-dialog>
 
     <!-- 新建文件夹弹窗 -->
-    <el-dialog v-model="showMkdir" title="新建文件夹" width="30%">
-      <el-input v-model="newDirName" placeholder="文件夹名称" />
+    <el-dialog v-model="showMkdir" :title="t('files.newDirectory')" width="400px">
+      <el-input v-model="newDirName" :placeholder="t('console.name')" @keyup.enter="createDir" />
       <template #footer>
-        <el-button type="primary" @click="createDir">确定</el-button>
+        <el-button type="primary" @click="createDir">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -75,6 +75,10 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useI18n } from 'vue-i18n'
+import { errorMessage, isCancellation } from '../lib/errors'
+import { readFileText } from '../lib/files'
+const { t } = useI18n()
 
 // 响应式数据
 const currentPath = ref('/')        // 当前浏览路径
@@ -120,8 +124,7 @@ const loadFiles = async (path) => {
       files.value = []
     }
   } catch (e) {
-    console.error('加载失败:', e)
-    ElMessage.error(e.response?.data?.msg || '加载失败: ' + e.message)
+    ElMessage.error(errorMessage(e, t('console.requestFailed')))
     // 出错时设置为空数组，避免渲染错误
     files.value = []
   } finally {
@@ -144,12 +147,11 @@ const refresh = () => loadFiles(currentPath.value)
 const editFile = async (row) => {
   const filePath = currentPath.value === '/' ? '/' + row.name : currentPath.value + '/' + row.name
   try {
-    const res = await axios.get(`/api/files/content?path=${encodeURIComponent(filePath)}`)
-    fileContent.value = res.data
+    fileContent.value = await readFileText(filePath)
     currentFile.value = filePath
     showEditor.value = true
   } catch (e) {
-    ElMessage.error(e.response?.data?.msg || '无法读取文件')
+    ElMessage.error(errorMessage(e, t('console.requestFailed')))
   }
 }
 
@@ -161,10 +163,10 @@ const saveFile = async () => {
       path: currentFile.value,
       content: fileContent.value
     })
-    ElMessage.success('保存成功')
+    ElMessage.success(t('console.saved'))
     showEditor.value = false
   } catch (e) {
-    ElMessage.error(e.response?.data?.msg || '保存失败')
+    ElMessage.error(errorMessage(e, t('console.requestFailed')))
   } finally {
     saving.value = false
   }
@@ -172,34 +174,38 @@ const saveFile = async () => {
 
 // 删除文件或目录 - 需要用户确认
 const deleteFile = (row) => {
-  ElMessageBox.confirm(`确定要删除 ${row.name} 吗？`, '警告', {
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
+  ElMessageBox.confirm(t('console.confirmDelete', { name: row.name }), t('common.warning'), {
+    confirmButtonText: t('common.delete'),
+    cancelButtonText: t('common.cancel'),
     type: 'warning',
   }).then(async () => {
     const filePath = currentPath.value === '/' ? '/' + row.name : currentPath.value + '/' + row.name
     await axios.post(`/api/files/action?type=delete&path=${encodeURIComponent(filePath)}`)
-    ElMessage.success('已删除')
+    ElMessage.success(t('console.deleted'))
     refresh()
   }).catch(error => {
-    if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(error.response?.data?.msg || '删除失败')
+    if (!isCancellation(error)) {
+      ElMessage.error(errorMessage(error, t('console.requestFailed')))
     }
   })
 }
 
 // 创建新目录
 const createDir = async () => {
-  if (!newDirName.value) return
-  const newPath = currentPath.value === '/' ? '/' + newDirName.value : currentPath.value + '/' + newDirName.value
+  const name = newDirName.value.trim()
+  if (!name || name === '.' || name === '..' || /[/\\]/.test(name)) {
+    ElMessage.warning(t('files.invalidName'))
+    return
+  }
+  const newPath = currentPath.value === '/' ? '/' + name : currentPath.value + '/' + name
   try {
     await axios.post(`/api/files/action?type=mkdir&path=${encodeURIComponent(newPath)}`)
-    ElMessage.success('创建成功')
+    ElMessage.success(t('console.created'))
     showMkdir.value = false
     newDirName.value = ''
     refresh()
   } catch (e) {
-    ElMessage.error(e.response?.data?.msg || '创建失败')
+    ElMessage.error(errorMessage(e, t('console.requestFailed')))
   }
 }
 

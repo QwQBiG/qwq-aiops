@@ -2,10 +2,13 @@ package gateway
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"qwq/internal/config"
 	"strings"
 	"sync"
 	"time"
@@ -99,7 +102,11 @@ func (g *Gateway) GetService(name string) (*ServiceInfo, bool) {
 	defer g.registry.mu.RUnlock()
 
 	service, exists := g.registry.services[name]
-	return service, exists
+	if !exists {
+		return nil, false
+	}
+	snapshot := *service
+	return &snapshot, true
 }
 
 // ListServices 列出所有服务
@@ -109,7 +116,8 @@ func (g *Gateway) ListServices() map[string]*ServiceInfo {
 
 	services := make(map[string]*ServiceInfo)
 	for name, service := range g.registry.services {
-		services[name] = service
+		snapshot := *service
+		services[name] = &snapshot
 	}
 	return services
 }
@@ -185,13 +193,13 @@ func (g *Gateway) findRoute(path string) *Route {
 	}
 
 	// 前缀匹配
+	var best *Route
 	for routePath, route := range g.routes {
-		if strings.HasPrefix(path, routePath) {
-			return route
+		if strings.HasPrefix(path, routePath) && (best == nil || len(routePath) > len(best.Path)) {
+			best = route
 		}
 	}
-
-	return nil
+	return best
 }
 
 // isMethodAllowed 检查HTTP方法是否允许
@@ -275,20 +283,26 @@ func HealthCheckMiddleware() Middleware {
 func AuthMiddleware() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// 跳过健康检查和公开路径
-			if r.URL.Path == "/health" || strings.HasPrefix(r.URL.Path, "/public/") {
+			if r.URL.Path == "/health" {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// 简化的认证检查（在测试中不依赖全局配置）
+			userCfg, passCfg := config.GlobalConfig.WebUser, config.GlobalConfig.WebPassword
+			if userCfg == "" && passCfg == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if userCfg == "" || passCfg == "" {
+				http.Error(w, "Web authentication is not configured correctly", http.StatusServiceUnavailable)
+				return
+			}
 			user, pass, ok := r.BasicAuth()
-			if ok && user == "test" && pass == "test" {
-				next.ServeHTTP(w, r)
+			if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(userCfg)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(passCfg)) != 1 {
+				w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-
-			// 如果没有认证信息，继续处理（测试模式）
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -306,9 +320,9 @@ func RateLimitMiddleware(requestsPerMinute int) Middleware {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			clientIP := r.RemoteAddr
-			if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-				clientIP = strings.Split(forwarded, ",")[0]
+			clientIP, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				clientIP = r.RemoteAddr
 			}
 
 			mu.Lock()
@@ -372,6 +386,9 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
 }
+
+// Let net/http's response controller preserve streaming and WebSocket upgrades.
+func (rw *responseWriter) Unwrap() http.ResponseWriter { return rw.ResponseWriter }
 
 // StartHealthChecker 启动健康检查器
 func (g *Gateway) StartHealthChecker(ctx context.Context) {

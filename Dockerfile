@@ -8,7 +8,7 @@ COPY scripts/build.mjs ./scripts/build.mjs
 RUN node scripts/build.mjs --frontend-only
 
 # --- Stage 2: 后端构建 ---
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine AS backend-builder
 
 WORKDIR /app
 
@@ -40,7 +40,7 @@ RUN GOARCH=${TARGETARCH:-amd64} go build \
 RUN chmod +x qwq && ls -lh qwq
 
 # --- Stage 3: Final Runtime Image ---
-FROM alpine:3.19
+FROM alpine:3.24
 
 LABEL maintainer="qwq AIOps Team" \
       version="1.0.0" \

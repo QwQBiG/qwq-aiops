@@ -2,17 +2,17 @@
 
 [简体中文](README.md) | English
 
-qwq Ops is a Go and Vue 3 operations workbench for system status, Docker containers, files, scheduled checks, notifications, and model conversations. Run it in a controlled environment: terminal commands and container actions affect the machine running the service.
+qwq Ops is a Go and Vue 3 operations workbench for system status, Docker containers, files, scheduled checks, notifications, and model conversations. Automatic terminal execution is limited to single read-only diagnostic commands. File and container actions modify the service's environment, so restrict access to trusted operators.
 
 ## What is connected today
 
 The Web service uses Go's standard `net/http` package. Vite builds the frontend, which is then embedded in the Go binary. Dashboard, containers, files, logs, and terminal are the main entry points.
 
-The repository also contains database, application store, website, backup, and cluster packages. Their implementation and Web integration vary. Some website, user, and role endpoints store data in process memory and lose it on restart. The user and role pages do not provide complete permission isolation. Read the [architecture and feature boundaries](docs/architecture.en.md) before choosing modules to use or extend.
+Website, user, and role pages currently maintain configuration records in memory. They lose data on restart and do not publish reverse proxies or establish permission isolation. Certificate issuance, user permission management, and runtime repair are not connected. The application store and database pages explain their integration requirements. Related business packages remain in the repository; read the [architecture and feature boundaries](docs/architecture.en.md) before using or extending them.
 
 ## Run from source
 
-Install Go 1.23 or later, Node.js 22, and npm. System checks depend on Linux commands. Windows supports builds and frontend development; use a Linux environment for the complete system checks.
+Install Go 1.26.11 or later, Node.js 22.13+ on the 22.x line or 24+, and npm. System checks depend on Linux commands. Windows supports builds and frontend development; verify complete system checks in a Linux environment.
 
 ```bash
 git clone https://github.com/QwQBiG/qwq-aiops.git
@@ -44,6 +44,8 @@ curl --fail --user operator http://localhost:8080/api/health
 
 `/health` returns minimal JSON liveness information without authentication. It does not test database, Docker, or external model availability. `/api/health` is an authenticated deployment diagnostics endpoint.
 
+Optional `gateway` mode forwards the same console through `PORT`. Its internal Web service listens only on `127.0.0.1:WEB_UI_PORT` (default `8899`) and uses the same entry point credentials. It does not start reserved microservices or expose a registry management port. See [deployment](docs/deployment.en.md) for an example.
+
 ## Configure authentication before use
 
 Set `WEB_USER` and `WEB_PASSWORD` together. Configuring only one prevents startup. Leaving both empty keeps anonymous access available for existing local workflows. Set credentials before starting the server, and keep an anonymous instance off public networks.
@@ -56,9 +58,9 @@ File access is constrained by its mount and blocked directories, but the workben
 cmd/qwq/            CLI entry point and startup orchestration
 internal/           Web integration, configuration, monitoring, business packages
 frontend/           Vue views, routes, translations, dependency lockfile
-scripts/            Shared build entry point and historical scripts
+scripts/            Shared build entry point
 config/             Configuration for optional supporting services
-docs/               Current guides; archive/ contains historical records
+docs/               Current Chinese and English guides
 .github/workflows/  Automated checks and builds
 ```
 
@@ -72,7 +74,5 @@ See [architecture](docs/architecture.en.md) for package responsibilities, reques
 | Local development and verification | [开发指南](docs/development.md) | [Development](docs/development.en.md) |
 | Structure and feature boundaries | [架构说明](docs/architecture.md) | [Architecture](docs/architecture.en.md) |
 | Reporting issues and proposing changes | [贡献指南](CONTRIBUTING.md) | [Contributing](CONTRIBUTING_EN.md) |
-
-Previous deployment guides, implementation reports, and test notes are in the [documentation archive](docs/archive/README.md). Their completion and verification claims describe earlier code, so check the current source and actual results before relying on them.
 
 Report problems through [Issues](https://github.com/QwQBiG/qwq-aiops/issues), including reproduction steps, your environment, and logs with secrets removed.

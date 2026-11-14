@@ -2,7 +2,7 @@
 
 [简体中文](development.md) · [Back to README](../README_EN.md)
 
-Use Go 1.23 or later, Node.js 22, and npm. Complete system checks require Bash and Linux tools. Windows can verify builds, HTTP behavior, and the frontend, but those results do not establish that Linux system checks work.
+Use Go 1.26.11 or later, Node.js 22.13+ on the 22.x line or 24+, and npm. Complete system checks require Bash and Linux tools. Windows can verify builds, HTTP behavior, and the frontend, but those results do not establish that Linux system checks work.
 
 ## Build the complete program
 
@@ -37,6 +37,8 @@ go run ./cmd/qwq web
 
 In Bash, use `export NAME='value'`; see [deployment](deployment.en.md) for a full example. `.env` supplies Compose interpolation values and is not loaded when running the program directly. The backend defaults to port `8080`.
 
+An occupied port or listener failure produces a nonzero exit code. `Ctrl+C` cancels collection, scheduled checks, HTTP checks, and the active model request; in `gateway` mode, it also stops the internal Web service. Tests can use `server.NewHandler()` without opening a listener or changing `http.DefaultServeMux`.
+
 ## Start the frontend development server
 
 Leave the backend running and open another terminal:
@@ -58,7 +60,14 @@ go test ./...
 
 The first command targets configuration and Web changes. The second checks the entire Go module. When tests fail, preserve the package name, command, and original error. Distinguish compilation failures, failed assertions, and unavailable external dependencies.
 
-Run at least `npm run build` for frontend changes. Run the complete `node scripts/build.mjs` for embedding or packaging changes. Configuration and route changes also require starting the program and checking accepted and rejected requests:
+Run unit tests and a production build for frontend changes. These commands work from the repository root:
+
+```bash
+npm --prefix frontend test
+npm --prefix frontend run build
+```
+
+Run the complete `node scripts/build.mjs` for embedding or packaging changes. Configuration and route changes also require starting the program and checking accepted and rejected requests:
 
 ```bash
 curl --fail http://localhost:8080/health
@@ -67,6 +76,8 @@ curl --fail --user operator http://localhost:8080/api/health
 ```
 
 Use `curl.exe` in Windows PowerShell to avoid older command aliases. With authentication enabled, the second request should return `401`; the third prompts for a password. Open the page, confirm that at least one static asset loads, then inspect `qwq.log`. Liveness does not exercise Docker or model requests; test those features separately.
+
+Unknown APIs should return `404`. File actions, container actions, and patrol triggers accept only `POST`. Unconnected certificate, user authorization, and runtime repair operations return `501`; verify that rejected requests preserve the original state. For terminal or polling changes, check that leaving the page or disconnecting stops requests and makes errors visible.
 
 For Docker changes:
 
@@ -81,11 +92,11 @@ Complete the [deployment configuration](deployment.en.md) first. If Docker is un
 
 ## What continuous integration checks
 
-`.github/workflows/build.yml` uses Go 1.23 and Node.js 22 on Ubuntu. It builds real frontend assets before running race detection and coverage tests for the entire module. Binary jobs reuse those assets and disable CGO for cross compilation. `docker-publish.yml` builds Linux images for multiple architectures; PR builds do not push images.
+`.github/workflows/build.yml` prepares Go and Node.js on Ubuntu, runs frontend tests and builds real assets, then runs race detection and coverage tests for the entire Go module. Binary jobs reuse those assets and disable CGO for cross compilation. In `docker-publish.yml`, frontend and Go build tools run on the runner's native architecture. Go cross-compiles for each target, while runtime images retain their target architecture. PR builds do not push images.
 
 This describes the workflow configuration, not the outcome for every commit. Inspect checks for the actual PR commit. Use original failure logs to locate problems rather than excluding failing packages and claiming the complete module passed.
 
-Earlier deployment and diagnostic scripts remain in [`scripts/legacy`](../scripts/legacy/README.md). They depend on the old layout and configuration and are retained only for reference. Use `scripts/build.mjs` for current builds and the root Compose configuration for deployment.
+Use `scripts/build.mjs` for builds and the root Compose configuration for deployment.
 
 ## Files and contributions
 

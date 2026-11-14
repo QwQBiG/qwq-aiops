@@ -76,9 +76,6 @@ temp/
 config.json
 config.local.json
 
-# Kiro 相关
-.kiro/
-
 # 其他
 coverage.txt
 *.prof

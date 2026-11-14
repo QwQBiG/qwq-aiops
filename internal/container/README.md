@@ -656,7 +656,7 @@ func (s *MyNotificationService) SendAlert(ctx context.Context, alert *Alert) err
 }
 ```
 
-详细文档请参考: [容器服务自愈系统](../../docs/archive/reports/container-self-healing-system.md)
+构建与验证命令请参考[开发指南](../../docs/development.md)。
 
 ## 未来扩展
 

@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"qwq/internal/config"
@@ -18,16 +19,27 @@ type CheckResult struct {
 
 // RunChecks 执行所有 HTTP 检查
 func RunChecks() []CheckResult {
+	return RunChecksContext(context.Background())
+}
+
+func RunChecksContext(ctx context.Context) []CheckResult {
 	var results []CheckResult
 	client := http.Client{
 		Timeout: 10 * time.Second, // 10秒超时
 	}
 
 	for _, rule := range config.GlobalConfig.HTTPRules {
+		if ctx.Err() != nil {
+			break
+		}
 		start := time.Now()
-		resp, err := client.Get(rule.URL)
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, rule.URL, nil)
+		var resp *http.Response
+		if err == nil {
+			resp, err = client.Do(request)
+		}
 		latency := time.Since(start).Milliseconds()
-		
+
 		res := CheckResult{
 			Name:    rule.Name,
 			URL:     rule.URL,
@@ -43,7 +55,7 @@ func RunChecks() []CheckResult {
 			res.Success = false
 			res.Error = fmt.Sprintf("连接失败: %v", err)
 		} else {
-			defer resp.Body.Close()
+			resp.Body.Close()
 			if resp.StatusCode != expectedCode {
 				res.Success = false
 				res.Error = fmt.Sprintf("状态码异常: %d (期望 %d)", resp.StatusCode, expectedCode)
