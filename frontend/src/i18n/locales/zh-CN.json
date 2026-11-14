@@ -22,7 +22,7 @@
     "databases": "数据库管理",
     "monitoring": "监控告警",
     "users": "用户权限",
-    "terminal": "AI 终端",
+    "terminal": "终端助手",
     "files": "文件管理",
     "logs": "系统日志"
   },
@@ -66,5 +66,57 @@
     "role": "角色",
     "permissions": "权限",
     "logout": "退出登录"
+  },
+  "console": {
+    "patrol": "运行巡检", "requestFailed": "请求失败，请检查服务状态后重试。",
+    "name": "名称", "status": "状态", "actions": "操作", "empty": "暂无记录",
+    "saved": "已保存", "created": "已创建", "deleted": "已删除",
+    "confirmDelete": "确定删除 {name} 吗？", "waitingMetrics": "等待系统指标……",
+    "createdAt": "创建时间", "description": "描述", "enabled": "启用", "disabled": "禁用",
+    "notFound": "找不到这个页面", "goDashboard": "返回仪表盘"
+  },
+  "logs": { "follow": "跟随最新日志", "empty": "暂无日志" },
+  "dashboard": {
+    "load": "CPU 负载", "memory": "内存使用", "disk": "根目录磁盘", "tcp": "TCP 连接",
+    "services": "HTTP 服务检查", "noServices": "未配置 HTTP 检查规则",
+    "address": "检查地址", "latency": "响应时间", "healthy": "正常", "unhealthy": "异常",
+    "loadDetail": "最近 1 分钟平均负载，不是 CPU 使用率", "available": "可用 {size}", "established": "已建立的连接"
+  },
+  "terminal": {
+    "connecting": "正在连接", "connected": "已连接", "disconnected": "已断开",
+    "thinking": "正在处理……", "executing": "正在执行命令……", "reconnect": "重新连接",
+    "cancel": "取消当前请求", "cancelled": "已关闭当前请求的连接；未完成的操作正在取消。",
+    "welcome": "可查询系统状态或发送运维请求。命令会在服务所在机器上执行。",
+    "you": "你", "assistant": "助手", "output": "执行输出", "send": "发送",
+    "placeholder": "输入运维请求，例如：查看内存使用情况",
+    "connectionError": "终端连接不可用，请重新连接后再试。", "invalidMessage": "收到无法识别的服务响应。"
+  },
+  "files": {
+    "root": "文件根目录", "newDirectory": "新建目录", "empty": "目录为空，或当前目录不可访问",
+    "size": "大小", "permissions": "权限", "modified": "修改时间",
+    "invalidName": "请输入单个目录名称，不包含斜杠、反斜杠或上级目录符号。"
+  },
+  "containers": {
+    "image": "镜像", "state": "容器状态", "start": "启动", "stop": "停止", "restart": "重启",
+    "confirmAction": "确定对 {name} 执行“{action}”吗？"
+  },
+  "capabilities": {
+    "unavailable": "此入口暂不提供管理操作。可用功能和接入边界见仓库中的架构说明。",
+    "appstore": { "title": "应用安装尚未接入工作台", "description": "仓库保留了模板和部署相关代码，但当前页面没有实际的安装或卸载流程。请使用已配置的部署工具管理应用。" },
+    "databases": { "title": "数据库管理尚未接入工作台", "description": "当前页面不建立数据库连接，也不执行 SQL。连接管理、查询和备份需要先接入对应业务服务。" },
+    "monitoring": { "title": "扩展监控尚未接入工作台", "description": "仪表盘可以查看当前系统指标和 HTTP 检查结果。告警规则、历史监控与可选监控服务尚未接入此页面。" }
+  },
+  "records": {
+    "memoryNotice": "这些记录仅保存在当前进程内存中，服务重启后会丢失。",
+    "websiteNotice": "这里只管理网站配置记录，不发布反向代理或签发证书。启用状态也只代表配置记录。",
+    "authNotice": "用户和角色记录不参与入口认证或权限隔离。工作台仍使用启动时配置的共享凭据。",
+    "users": "用户记录", "roles": "角色记录", "permissions": "权限目录",
+    "email": "邮箱", "password": "记录密码", "createUser": "创建用户记录", "createRole": "创建角色记录",
+    "editUser": "编辑用户记录", "editRole": "编辑角色记录", "roleName": "角色名称",
+    "permissionInfo": "权限分配尚未接入认证流程，当前不可操作。", "requiredName": "请填写名称。"
+  },
+  "websiteConfig": {
+    "backend": "后端地址", "balance": "负载均衡策略", "roundRobin": "轮询", "leastConnections": "最少连接", "ipHash": "IP 哈希",
+    "enabled": "配置启用", "sslUnavailable": "证书签发与续期尚未接入，当前不可操作。", "requiredFields": "请填写域名和后端地址。"
   }
 }

@@ -16,7 +16,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version-file: go.mod
 
     - name: Set up Node.js
       uses: actions/setup-node@v4
@@ -39,6 +39,12 @@ jobs:
     - name: Build embedded frontend
       run: node scripts/build.mjs --frontend-only
 
+    - name: Test frontend behavior
+      run: npm test --prefix frontend
+
+    - name: Audit frontend dependencies
+      run: npm audit --prefix frontend --audit-level=high
+
     - name: Save embedded frontend
       uses: actions/upload-artifact@v4
       with:
@@ -48,6 +54,9 @@ jobs:
 
     - name: Run tests
       run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+    - name: Check reachable Go vulnerabilities
+      run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./cmd/... ./internal/...
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
@@ -73,7 +82,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version-file: go.mod
 
     - name: Restore embedded frontend
       uses: actions/download-artifact@v4

@@ -133,7 +133,7 @@ func (is *IntegrationService) RunComprehensiveValidation() *DeploymentStatus {
 	configStatus := is.validateConfiguration()
 	status.Components["configuration"] = configStatus
 	if configStatus.Status != "healthy" {
-		status.Overall = "warning"
+		status.Overall = configStatus.Status
 		status.Issues = append(status.Issues, configStatus.Issues...)
 		status.Suggestions = append(status.Suggestions, configStatus.Suggestions...)
 	}
@@ -263,6 +263,10 @@ func (is *IntegrationService) validateNotificationService() ComponentStatus {
 		Suggestions: []string{},
 	}
 
+	if config.GlobalConfig.DingTalkWebhook == "" {
+		status.Suggestions = append(status.Suggestions, "Notifications are optional and currently disabled")
+		return status
+	}
 	// 验证通知配置的有效性
 	if err := is.notifyService.ValidateConfig(); err != nil {
 		status.Status = "warning" // 通知服务问题通常不是致命的

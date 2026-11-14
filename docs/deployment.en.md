@@ -24,6 +24,18 @@ Preserve the browser's `Host` through a reverse proxy so writes and WebSocket co
 
 Alternatively, load a JSON file with `--config /path/to/config.json`. The `Config` struct in `internal/config/config.go` defines its fields, including `api_key`, `base_url`, `model`, `web_user`, `web_password`, `patrol_rules`, and `http_rules`. Environment variables override corresponding values. Keep real credentials out of version control.
 
+## Run the optional gateway
+
+After setting the credentials and model endpoint above in the same terminal, you can instead run:
+
+```bash
+export PORT='8080'
+export WEB_UI_PORT='8899'
+./bin/qwq gateway
+```
+
+The entry point remains <http://localhost:8080>. The gateway authenticates with the configured credentials and forwards HTTP and WebSocket requests to internal `127.0.0.1:8899`, preserving the browser's `Host`. Choose an unused `WEB_UI_PORT` different from `PORT`. A failure to bind either listener ends startup; stopping the process stops both services. This mode proxies the current console and does not start microservices for other business packages.
+
 ## Connect a local model
 
 A service running on the host can use this Bash configuration:
@@ -83,6 +95,8 @@ curl --fail --user operator http://localhost:8081/api/health
 
 The first request should return JSON liveness information. The second prompts for a password. Protected endpoints should return `401` without credentials. Liveness does not test Docker, models, databases, or business data. Exercise the feature you intend to use and inspect the logs as well.
 
+Deployment diagnostics inspect the process's effective configuration and embedded assets. Missing notification configuration means that optional feature is disabled. Actual model and Docker requests are still needed to verify those services. Certificate issuance, user permission management, and automatic runtime repair are not connected and return `501`; change configuration, rebuild, and restart through the deployment workflow.
+
 Compose requires nonempty `WEB_USER` and `WEB_PASSWORD`. When running the binary directly, configure them together: one missing value prevents startup, while both empty retain anonymous access. Recreate a container after changing Compose environment variables, for example with `docker compose up -d qwq`. A plain `restart` does not refresh its environment.
 
 ## Troubleshooting
@@ -94,6 +108,9 @@ Compose requires nonempty `WEB_USER` and `WEB_PASSWORD`. When running the binary
 | Missing pages or placeholder assets | Run the full build and recompile Go; `npm run build` alone cannot update an existing binary |
 | Docker actions fail | Check the client, daemon address, and container user's socket permissions |
 | Model requests fail | Check endpoint, model name, key, and network access from the container |
+| A write returns `403` | Check credentials and `Origin`, and confirm the proxy preserves the original `Host` |
+| An API returns `404` or `501` | `404` means no such endpoint; `501` means the management capability is not connected. See [feature boundaries](architecture.en.md) |
+| File editing fails or changes format | Editing accepts regular UTF-8 text files up to 2 MiB; check process permissions. JSON and HTML are edited as raw text |
 | Data disappears after restart | Check the [feature boundaries](architecture.en.md) for in-memory endpoints |
 
 For source runs, inspect `qwq.log` in the working directory. For containers, start with `docker compose logs`. Preserve data and logs while investigating; clearing volumes or global build caches is not a prerequisite for diagnosis.

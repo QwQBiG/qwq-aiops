@@ -328,34 +328,18 @@ func (api *RegistryAPI) writeError(w http.ResponseWriter, message string, code i
 
 // StartRegistryServer 启动注册中心服务器
 func StartRegistryServer(port int, registry *ServiceRegistry, client *ServiceDiscoveryClient) error {
+	return newRegistryHTTPServer(port, registry, client).ListenAndServe()
+}
+
+// Registry management is local-only and is not started by console gateway mode.
+func newRegistryHTTPServer(port int, registry *ServiceRegistry, client *ServiceDiscoveryClient) *http.Server {
 	api := NewRegistryAPI(registry, client)
 	
 	mux := http.NewServeMux()
 	api.RegisterRoutes(mux)
 	
-	// 添加CORS支持
-	handler := corsMiddleware(mux)
-	
-	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: handler,
+	return &http.Server{
+		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
+		Handler: mux,
 	}
-	
-	return server.ListenAndServe()
-}
-
-// corsMiddleware CORS中间件
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		
-		next.ServeHTTP(w, r)
-	})
 }

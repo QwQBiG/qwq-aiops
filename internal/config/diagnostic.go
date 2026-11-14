@@ -92,74 +92,7 @@ func (d *ConfigDiagnostic) RunDiagnostics() []*DiagnosticResult {
 
 // diagnoseEnvConfig 诊断环境配置
 func (d *ConfigDiagnostic) diagnoseEnvConfig() *DiagnosticResult {
-	result := &DiagnosticResult{
-		Component:   "环境配置",
-		Status:      StatusHealthy,
-		Issues:      []Issue{},
-		Suggestions: []string{},
-		Timestamp:   time.Now(),
-	}
-
-	// 检查 .env 文件是否存在
-	if _, err := os.Stat(".env"); os.IsNotExist(err) {
-		result.Status = StatusWarning
-		result.Issues = append(result.Issues, Issue{
-			Type:        IssueTypeMissingConfig,
-			Description: ".env 配置文件不存在",
-			Severity:    SeverityMedium,
-			FixCommand:  "复制 .env.example 为 .env 并配置相应的值",
-		})
-		result.Suggestions = append(result.Suggestions, "运行: copy .env.example .env (Windows) 或 cp .env.example .env (Linux)")
-	}
-
-	// 加载并验证配置
-	if err := d.validator.LoadEnvVars(); err != nil {
-		result.Status = StatusError
-		result.Issues = append(result.Issues, Issue{
-			Type:        IssueTypeInvalidConfig,
-			Description: fmt.Sprintf("加载配置失败: %v", err),
-			Severity:    SeverityHigh,
-		})
-		return result
-	}
-
-	// 验证配置
-	validationResult := d.validator.Validate()
-	if !validationResult.Valid {
-		result.Status = StatusError
-
-		// 添加缺失配置的问题
-		for _, key := range validationResult.MissingRequired {
-			result.Issues = append(result.Issues, Issue{
-				Type:        IssueTypeMissingConfig,
-				Description: fmt.Sprintf("缺少必需的配置项: %s", key),
-				Severity:    SeverityCritical,
-			})
-		}
-
-		// 添加无效配置的问题
-		for _, err := range validationResult.InvalidConfigs {
-			result.Issues = append(result.Issues, Issue{
-				Type:        IssueTypeInvalidConfig,
-				Description: fmt.Sprintf("%s: %s", err.Key, err.Reason),
-				Severity:    SeverityHigh,
-				FixCommand:  err.Suggestion,
-			})
-		}
-	}
-
-	// 添加警告
-	for _, warning := range validationResult.Warnings {
-		if result.Status == StatusHealthy {
-			result.Status = StatusWarning
-		}
-		result.Suggestions = append(result.Suggestions, warning)
-	}
-
-	// 添加建议
-	result.Suggestions = append(result.Suggestions, validationResult.Suggestions...)
-
-	return result
+	return diagnoseRuntimeConfig(GlobalConfig)
 }
 
 // diagnoseSecurityConfig 诊断安全配置
@@ -172,16 +105,17 @@ func (d *ConfigDiagnostic) diagnoseSecurityConfig() *DiagnosticResult {
 		Timestamp:   time.Now(),
 	}
 
-	status := d.validator.GetConfigStatus()
-
-	if !status.SecurityConfigured {
+	if (GlobalConfig.WebUser == "") != (GlobalConfig.WebPassword == "") {
+		result.Status = StatusError
+		result.Issues = append(result.Issues, Issue{Type: IssueTypeInvalidConfig, Description: "WEB_USER and WEB_PASSWORD must be configured together", Severity: SeverityHigh})
+	} else if GlobalConfig.WebUser == "" {
 		result.Status = StatusWarning
 		result.Issues = append(result.Issues, Issue{
 			Type:        IssueTypeInvalidConfig,
-			Description: "安全配置使用默认值，存在安全风险",
+			Description: "Web access is anonymous because entrypoint credentials are not configured",
 			Severity:    SeverityHigh,
 		})
-		result.Suggestions = append(result.Suggestions, "请修改 JWT_SECRET 和 ENCRYPTION_KEY 为随机生成的安全密钥")
+		result.Suggestions = append(result.Suggestions, "Configure WEB_USER and WEB_PASSWORD before allowing remote access")
 	}
 
 	return result
@@ -197,11 +131,11 @@ func (d *ConfigDiagnostic) diagnoseNotificationConfig() *DiagnosticResult {
 		Timestamp:   time.Now(),
 	}
 
-	status := d.validator.GetConfigStatus()
-
-	if !status.DingTalkConfigured {
-		result.Status = StatusWarning
-		result.Suggestions = append(result.Suggestions, "钉钉通知未配置，建议配置 DINGTALK_WEBHOOK 以启用告警通知")
+	if GlobalConfig.DingTalkWebhook == "" {
+		result.Suggestions = append(result.Suggestions, "Notifications are optional and currently disabled")
+	} else if !ValidateWebhookURL("dingtalk", GlobalConfig.DingTalkWebhook) {
+		result.Status = StatusError
+		result.Issues = append(result.Issues, Issue{Type: IssueTypeInvalidConfig, Description: "DINGTALK_WEBHOOK has an invalid URL", Severity: SeverityHigh})
 	}
 
 	return result

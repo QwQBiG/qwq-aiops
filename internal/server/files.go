@@ -4,7 +4,9 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,6 +14,8 @@ import (
 	"sort"
 	"unicode/utf8"
 )
+
+const maxEditableFileSize = 2 * 1024 * 1024
 
 // MountPoint 文件系统挂载点
 // 在容器环境中，宿主机文件系统通常挂载到 /hostfs
@@ -131,6 +135,11 @@ func handleFileList(w http.ResponseWriter, r *http.Request) {
 // 读取指定文件的内容，支持文本文件的在线编辑
 // 包含文件大小和格式检查，确保安全性
 func handleFileContent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		jsonResponse(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
 	// 获取文件路径
 	userPath := r.URL.Query().Get("path")
 	realPath, err := resolveSafePath(userPath)
@@ -147,15 +156,29 @@ func handleFileContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 限制文件大小，防止内存溢出（最大 2MB）
-	if info.Size() > 2*1024*1024 {
+	if !info.Mode().IsRegular() {
+		jsonResponse(w, http.StatusBadRequest, "Only regular text files can be edited", nil)
+		return
+	}
+	if info.Size() > maxEditableFileSize {
 		jsonResponse(w, 400, "文件过大 (>2MB)，不支持在线编辑", nil)
 		return
 	}
 
 	// 读取文件内容
-	content, err := os.ReadFile(realPath)
+	file, err := os.Open(realPath)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, "Read failed", nil)
+		return
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxEditableFileSize+1))
 	if err != nil {
 		jsonResponse(w, 500, "读取失败", nil)
+		return
+	}
+	if len(content) > maxEditableFileSize {
+		jsonResponse(w, http.StatusRequestEntityTooLarge, "File exceeds the 2 MiB editing limit", nil)
 		return
 	}
 
@@ -166,7 +189,12 @@ func handleFileContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 直接返回文件内容（不使用 JSON 包装）
-	w.Write(content)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodHead {
+		w.Write(content)
+	}
 }
 
 // handleFileSave 处理文件保存请求
@@ -175,6 +203,7 @@ func handleFileContent(w http.ResponseWriter, r *http.Request) {
 func handleFileSave(w http.ResponseWriter, r *http.Request) {
 	// 只允许 POST 方法
 	if r.Method != "POST" {
+		w.Header().Set("Allow", http.MethodPost)
 		jsonResponse(w, 405, "Method not allowed", nil)
 		return
 	}
@@ -184,8 +213,24 @@ func handleFileSave(w http.ResponseWriter, r *http.Request) {
 		Path    string `json:"path"`    // 文件路径
 		Content string `json:"content"` // 文件内容
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonResponse(w, 400, "Invalid JSON", nil)
+	// Allow JSON escaping of each content byte without allowing an unbounded body.
+	r.Body = http.MaxBytesReader(w, r.Body, 6*maxEditableFileSize+32*1024)
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&req); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			jsonResponse(w, http.StatusRequestEntityTooLarge, "Request body is too large", nil)
+		} else {
+			jsonResponse(w, http.StatusBadRequest, "Invalid JSON", nil)
+		}
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		jsonResponse(w, http.StatusBadRequest, "Expected a single JSON object", nil)
+		return
+	}
+	if len(req.Content) > maxEditableFileSize {
+		jsonResponse(w, http.StatusRequestEntityTooLarge, "File exceeds the 2 MiB editing limit", nil)
 		return
 	}
 
@@ -194,6 +239,13 @@ func handleFileSave(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Info("[AUDIT] 🚨 非法写入尝试: %s", req.Path)
 		jsonResponse(w, 403, err.Error(), nil)
+		return
+	}
+	// Edit the validated target without replacing a configuration-file symlink.
+	if target, err := filepath.EvalSymlinks(realPath); err == nil {
+		realPath = target
+	} else if !os.IsNotExist(err) {
+		jsonResponse(w, http.StatusBadRequest, "Unable to resolve file target", nil)
 		return
 	}
 
@@ -268,6 +320,14 @@ func handleFileAction(w http.ResponseWriter, r *http.Request) {
 // 防止写入过程中系统崩溃导致的文件损坏
 // 参数：filename - 目标文件路径，data - 要写入的数据，perm - 文件权限
 func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
+	if info, err := os.Stat(filename); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("only regular files can be saved")
+		}
+		perm = info.Mode().Perm()
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	// 获取目标文件所在目录
 	dir := filepath.Dir(filename)
 
@@ -281,6 +341,10 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 
 	// 写入数据到临时文件
 	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Chmod(perm.Perm()); err != nil {
 		tmpFile.Close()
 		return err
 	}

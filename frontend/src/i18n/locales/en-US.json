@@ -22,7 +22,7 @@
     "databases": "Databases",
     "monitoring": "Monitoring",
     "users": "Users",
-    "terminal": "AI Terminal",
+    "terminal": "Terminal",
     "files": "Files",
     "logs": "Logs"
   },
@@ -66,5 +66,57 @@
     "role": "Role",
     "permissions": "Permissions",
     "logout": "Logout"
+  },
+  "console": {
+    "patrol": "Run checks", "requestFailed": "Request failed. Check the service and try again.",
+    "name": "Name", "status": "Status", "actions": "Actions", "empty": "No records",
+    "saved": "Saved", "created": "Created", "deleted": "Deleted",
+    "confirmDelete": "Delete {name}?", "waitingMetrics": "Waiting for system metrics…",
+    "createdAt": "Created", "description": "Description", "enabled": "Enabled", "disabled": "Disabled",
+    "notFound": "Page not found", "goDashboard": "Back to dashboard"
+  },
+  "logs": { "follow": "Follow latest logs", "empty": "No logs yet" },
+  "dashboard": {
+    "load": "CPU load", "memory": "Memory", "disk": "Root disk", "tcp": "TCP connections",
+    "services": "HTTP service checks", "noServices": "No HTTP checks configured",
+    "address": "Address", "latency": "Response time", "healthy": "Healthy", "unhealthy": "Unhealthy",
+    "loadDetail": "1-minute load average, not CPU utilization", "available": "{size} available", "established": "Established connections"
+  },
+  "terminal": {
+    "connecting": "Connecting", "connected": "Connected", "disconnected": "Disconnected",
+    "thinking": "Processing…", "executing": "Running a command…", "reconnect": "Reconnect",
+    "cancel": "Cancel request", "cancelled": "Closed this request's connection. Unfinished work is being cancelled.",
+    "welcome": "Ask about system status or send an operations request. Commands run on the service's machine.",
+    "you": "You", "assistant": "Assistant", "output": "Command output", "send": "Send",
+    "placeholder": "Enter a request, for example: check memory usage",
+    "connectionError": "The terminal connection is unavailable. Reconnect and try again.", "invalidMessage": "The service sent an unrecognized response."
+  },
+  "files": {
+    "root": "File root", "newDirectory": "New directory", "empty": "This directory is empty or unavailable",
+    "size": "Size", "permissions": "Permissions", "modified": "Modified",
+    "invalidName": "Enter one directory name without slashes, backslashes or parent-directory markers."
+  },
+  "containers": {
+    "image": "Image", "state": "Container state", "start": "Start", "stop": "Stop", "restart": "Restart",
+    "confirmAction": "{action} {name}?"
+  },
+  "capabilities": {
+    "unavailable": "Management actions are unavailable here. See the repository's architecture guide for current capabilities and integration limits.",
+    "appstore": { "title": "Application installation is not connected", "description": "Template and deployment code remains in the repository, but this page has no working install or uninstall flow. Manage applications with your configured deployment tools." },
+    "databases": { "title": "Database management is not connected", "description": "This page does not open database connections or execute SQL. Connection management, queries and backups require the corresponding services to be integrated first." },
+    "monitoring": { "title": "Extended monitoring is not connected", "description": "The dashboard shows current system metrics and HTTP check results. Alert rules, monitoring history and optional monitoring services are not connected to this page." }
+  },
+  "records": {
+    "memoryNotice": "These records live in process memory and disappear when the service restarts.",
+    "websiteNotice": "This page manages configuration records. It does not publish a reverse proxy or issue certificates. Enabled status also refers only to the record.",
+    "authNotice": "User and role records do not control authentication or access. The workbench still uses its shared startup credentials.",
+    "users": "User records", "roles": "Role records", "permissions": "Permission catalog",
+    "email": "Email", "password": "Record password", "createUser": "Create user record", "createRole": "Create role record",
+    "editUser": "Edit user record", "editRole": "Edit role record", "roleName": "Role name",
+    "permissionInfo": "Permission assignments are not connected to authentication and cannot be managed here.", "requiredName": "Enter a name."
+  },
+  "websiteConfig": {
+    "backend": "Backend address", "balance": "Load balancing", "roundRobin": "Round robin", "leastConnections": "Least connections", "ipHash": "IP hash",
+    "enabled": "Record enabled", "sslUnavailable": "Certificate issuance and renewal are not connected and cannot be managed here.", "requiredFields": "Enter a domain and backend address."
   }
 }

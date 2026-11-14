@@ -15,12 +15,8 @@ export default defineConfig({
     outDir: 'dist',              // 输出目录
     assetsDir: 'assets',         // 静态资源目录
     sourcemap: false,            // 生产环境不生成 sourcemap
-    minify: 'esbuild',           // 使用 esbuild 压缩（更快，Vite 内置）
-    chunkSizeWarningLimit: 1500, // chunk 大小警告阈值 (KB)
-    
-    // Rollup 打包配置 - 使用默认配置，不手动分包
-    // 让 Vite 自动优化，避免 embed 问题
-    rollupOptions: {}
+    minify: true,
+    chunkSizeWarningLimit: 1000
   },
   
   // 开发服务器配置
