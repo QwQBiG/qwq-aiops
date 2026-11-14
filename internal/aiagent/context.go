@@ -168,7 +168,8 @@ func (s *NLUServiceImpl) DetectLanguage(ctx context.Context, text string) (strin
 		}
 	}
 	
-	if chineseCount > englishCount {
+	// Service names are usually Latin even inside a Chinese command.
+	if chineseCount > 0 {
 		return "zh", nil
 	} else if englishCount > 0 {
 		return "en", nil

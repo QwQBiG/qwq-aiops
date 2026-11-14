@@ -58,30 +58,30 @@ func DefaultHealingConfig() *HealingConfig {
 
 // HealthStatus 健康状态
 type HealthStatus struct {
-	ContainerID      string    `json:"container_id"`
-	Status           string    `json:"status"` // healthy, unhealthy, unknown
-	LastCheckTime    time.Time `json:"last_check_time"`
-	ConsecutiveFailures int    `json:"consecutive_failures"`
-	TotalRestarts    int       `json:"total_restarts"`
-	LastRestartTime  *time.Time `json:"last_restart_time,omitempty"`
-	Message          string    `json:"message"`
+	ContainerID         string     `json:"container_id"`
+	Status              string     `json:"status"` // healthy, unhealthy, unknown
+	LastCheckTime       time.Time  `json:"last_check_time"`
+	ConsecutiveFailures int        `json:"consecutive_failures"`
+	TotalRestarts       int        `json:"total_restarts"`
+	LastRestartTime     *time.Time `json:"last_restart_time,omitempty"`
+	Message             string     `json:"message"`
 }
 
 // FailureRecord 故障记录
 type FailureRecord struct {
-	ID           uint      `json:"id" gorm:"primaryKey"`
-	ContainerID  string    `json:"container_id" gorm:"index;not null"`
-	ServiceName  string    `json:"service_name"`
-	ProjectName  string    `json:"project_name"`
-	FailureType  string    `json:"failure_type"` // health_check_failed, container_stopped, container_error
-	ErrorMessage string    `json:"error_message" gorm:"type:text"`
-	Details      string    `json:"details" gorm:"type:text"` // JSON格式的详细信息
-	Action       string    `json:"action"` // restart, alert, none
-	ActionResult string    `json:"action_result"` // success, failed
-	DetectedAt   time.Time `json:"detected_at"`
+	ID           uint       `json:"id" gorm:"primaryKey"`
+	ContainerID  string     `json:"container_id" gorm:"index;not null"`
+	ServiceName  string     `json:"service_name"`
+	ProjectName  string     `json:"project_name"`
+	FailureType  string     `json:"failure_type"` // health_check_failed, container_stopped, container_error
+	ErrorMessage string     `json:"error_message" gorm:"type:text"`
+	Details      string     `json:"details" gorm:"type:text"` // JSON格式的详细信息
+	Action       string     `json:"action"`                   // restart, alert, none
+	ActionResult string     `json:"action_result"`            // success, failed
+	DetectedAt   time.Time  `json:"detected_at"`
 	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
-	TenantID     uint      `json:"tenant_id" gorm:"index"`
-	CreatedAt    time.Time `json:"created_at"`
+	TenantID     uint       `json:"tenant_id" gorm:"index"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // TableName 指定表名
@@ -91,22 +91,22 @@ func (FailureRecord) TableName() string {
 
 // monitoredContainer 被监控的容器
 type monitoredContainer struct {
-	containerID string
-	config      *HealingConfig
-	health      *HealthStatus
+	containerID  string
+	config       *HealingConfig
+	health       *HealthStatus
 	restartTimes []time.Time // 重启时间记录
-	mu          sync.RWMutex
+	mu           sync.RWMutex
 }
 
 // selfHealingServiceImpl 自愈服务实现
 type selfHealingServiceImpl struct {
-	db             *gorm.DB
-	executor       DockerExecutor
-	containers     map[string]*monitoredContainer
-	mu             sync.RWMutex
-	stopChan       chan struct{}
-	wg             sync.WaitGroup
-	notifyService  NotificationService
+	db            *gorm.DB
+	executor      DockerExecutor
+	containers    map[string]*monitoredContainer
+	mu            sync.RWMutex
+	stopChan      chan struct{}
+	wg            sync.WaitGroup
+	notifyService NotificationService
 }
 
 // NotificationService 通知服务接口（用于发送告警）
@@ -116,13 +116,13 @@ type NotificationService interface {
 
 // Alert 告警信息
 type Alert struct {
-	Level       string    `json:"level"` // info, warning, error, critical
-	Title       string    `json:"title"`
-	Message     string    `json:"message"`
-	ContainerID string    `json:"container_id"`
-	ServiceName string    `json:"service_name"`
-	ProjectName string    `json:"project_name"`
-	Timestamp   time.Time `json:"timestamp"`
+	Level       string                 `json:"level"` // info, warning, error, critical
+	Title       string                 `json:"title"`
+	Message     string                 `json:"message"`
+	ContainerID string                 `json:"container_id"`
+	ServiceName string                 `json:"service_name"`
+	ProjectName string                 `json:"project_name"`
+	Timestamp   time.Time              `json:"timestamp"`
 	Details     map[string]interface{} `json:"details,omitempty"`
 }
 
@@ -225,7 +225,8 @@ func (s *selfHealingServiceImpl) GetFailureHistory(ctx context.Context, containe
 func (s *selfHealingServiceImpl) monitorLoop(ctx context.Context) {
 	defer s.wg.Done()
 
-	ticker := time.NewTicker(10 * time.Second) // 每10秒检查一次
+	// CheckInterval is configured in seconds; each container enforces its own interval.
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -270,7 +271,7 @@ func (s *selfHealingServiceImpl) checkContainer(ctx context.Context, container *
 
 	// 获取容器状态
 	status, err := s.executor.GetContainerStatus(checkCtx, container.containerID)
-	
+
 	container.health.LastCheckTime = time.Now()
 
 	if err != nil {
@@ -311,11 +312,11 @@ func (s *selfHealingServiceImpl) checkContainer(ctx context.Context, container *
 		// 从不健康恢复到健康
 		container.health.Status = "healthy"
 		container.health.Message = "container is healthy"
-		
+
 		// 如果之前有未解决的故障记录，标记为已解决
 		s.resolveFailures(ctx, container.containerID)
 	}
-	
+
 	container.health.ConsecutiveFailures = 0
 }
 
@@ -324,7 +325,7 @@ func (s *selfHealingServiceImpl) healContainer(ctx context.Context, container *m
 	if !container.config.AutoRestart {
 		// 不自动重启，只发送告警
 		if container.config.SendAlert {
-			s.sendAlert(ctx, container, "critical", "Container unhealthy", 
+			s.sendAlert(ctx, container, "critical", "Container unhealthy",
 				fmt.Sprintf("Container %s is unhealthy but auto-restart is disabled", container.containerID))
 		}
 		return
@@ -333,7 +334,7 @@ func (s *selfHealingServiceImpl) healContainer(ctx context.Context, container *m
 	// 检查重启次数限制
 	now := time.Now()
 	windowStart := now.Add(-time.Duration(container.config.RestartWindow) * time.Second)
-	
+
 	// 清理时间窗口外的重启记录
 	validRestarts := make([]time.Time, 0)
 	for _, t := range container.restartTimes {
@@ -351,7 +352,7 @@ func (s *selfHealingServiceImpl) healContainer(ctx context.Context, container *m
 				fmt.Sprintf("Container %s has exceeded max restart limit (%d restarts in %d seconds)",
 					container.containerID, container.config.MaxRestarts, container.config.RestartWindow))
 		}
-		
+
 		// 记录故障
 		s.recordFailure(ctx, container, "restart_limit_exceeded",
 			fmt.Sprintf("exceeded max restart limit: %d restarts in %d seconds",
@@ -360,23 +361,23 @@ func (s *selfHealingServiceImpl) healContainer(ctx context.Context, container *m
 				"action": "none",
 				"reason": "restart_limit_exceeded",
 			})
-		
+
 		return
 	}
 
 	// 尝试重启容器
 	err := s.executor.StartContainer(ctx, container.containerID)
-	
+
 	actionResult := "success"
 	if err != nil {
 		actionResult = "failed"
-		
+
 		// 重启失败，发送告警
 		if container.config.SendAlert {
 			s.sendAlert(ctx, container, "error", "Container restart failed",
 				fmt.Sprintf("Failed to restart container %s: %v", container.containerID, err))
 		}
-		
+
 		// 记录故障
 		s.recordFailure(ctx, container, "restart_failed", err.Error(), map[string]interface{}{
 			"action": "restart",
@@ -388,17 +389,17 @@ func (s *selfHealingServiceImpl) healContainer(ctx context.Context, container *m
 		container.health.TotalRestarts++
 		container.health.LastRestartTime = &now
 		container.health.ConsecutiveFailures = 0
-		
+
 		// 发送成功通知
 		if container.config.SendAlert {
 			s.sendAlert(ctx, container, "warning", "Container restarted",
 				fmt.Sprintf("Container %s has been automatically restarted", container.containerID))
 		}
-		
+
 		// 记录故障和恢复
 		s.recordFailure(ctx, container, "auto_restart", "container automatically restarted", map[string]interface{}{
-			"action": "restart",
-			"result": "success",
+			"action":        "restart",
+			"result":        "success",
 			"restart_count": len(container.restartTimes),
 		})
 	}
@@ -408,12 +409,12 @@ func (s *selfHealingServiceImpl) healContainer(ctx context.Context, container *m
 }
 
 // recordFailure 记录故障
-func (s *selfHealingServiceImpl) recordFailure(ctx context.Context, container *monitoredContainer, 
+func (s *selfHealingServiceImpl) recordFailure(ctx context.Context, container *monitoredContainer,
 	failureType, errorMessage string, details map[string]interface{}) {
-	
+
 	// 获取容器信息
 	info, err := s.executor.GetContainerInfo(ctx, container.containerID)
-	
+
 	serviceName := ""
 	projectName := ""
 	if err == nil && info != nil {
@@ -474,16 +475,16 @@ func (s *selfHealingServiceImpl) resolveFailures(ctx context.Context, containerI
 }
 
 // sendAlert 发送告警
-func (s *selfHealingServiceImpl) sendAlert(ctx context.Context, container *monitoredContainer, 
+func (s *selfHealingServiceImpl) sendAlert(ctx context.Context, container *monitoredContainer,
 	level, title, message string) {
-	
+
 	if s.notifyService == nil {
 		return
 	}
 
 	// 获取容器信息
 	info, _ := s.executor.GetContainerInfo(ctx, container.containerID)
-	
+
 	serviceName := ""
 	projectName := ""
 	if info != nil {
@@ -500,8 +501,8 @@ func (s *selfHealingServiceImpl) sendAlert(ctx context.Context, container *monit
 		Timestamp:   time.Now(),
 		Details: map[string]interface{}{
 			"consecutive_failures": container.health.ConsecutiveFailures,
-			"total_restarts":      container.health.TotalRestarts,
-			"health_status":       container.health.Status,
+			"total_restarts":       container.health.TotalRestarts,
+			"health_status":        container.health.Status,
 		},
 	}
 

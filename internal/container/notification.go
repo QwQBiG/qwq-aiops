@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 )
 
 // simpleNotificationService 简单的通知服务实现
@@ -29,7 +30,7 @@ func (s *simpleNotificationService) SendAlert(ctx context.Context, alert *Alert)
 	// 实际应该发送邮件、短信、Webhook等
 	log.Printf("[ALERT] Level: %s, Title: %s, Message: %s, Container: %s, Service: %s, Project: %s",
 		alert.Level, alert.Title, alert.Message, alert.ContainerID, alert.ServiceName, alert.ProjectName)
-	
+
 	// 可以在这里添加实际的通知逻辑
 	// 例如：
 	// - 发送邮件
@@ -37,12 +38,13 @@ func (s *simpleNotificationService) SendAlert(ctx context.Context, alert *Alert)
 	// - 调用 Webhook
 	// - 推送到消息队列
 	// - 集成 Slack/钉钉/企业微信等
-	
+
 	return nil
 }
 
 // mockNotificationService 用于测试的 Mock 通知服务
 type mockNotificationService struct {
+	mu     sync.Mutex
 	alerts []*Alert
 }
 
@@ -55,17 +57,23 @@ func NewMockNotificationService() *mockNotificationService {
 
 // SendAlert 发送告警（记录到内存）
 func (s *mockNotificationService) SendAlert(ctx context.Context, alert *Alert) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.alerts = append(s.alerts, alert)
 	return nil
 }
 
 // GetAlerts 获取所有告警记录（用于测试）
 func (s *mockNotificationService) GetAlerts() []*Alert {
-	return s.alerts
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]*Alert(nil), s.alerts...)
 }
 
 // ClearAlerts 清空告警记录（用于测试）
 func (s *mockNotificationService) ClearAlerts() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.alerts = make([]*Alert, 0)
 }
 
@@ -88,7 +96,7 @@ func (s *webhookNotificationService) SendAlert(ctx context.Context, alert *Alert
 	// 1. 将 alert 序列化为 JSON
 	// 2. 发送 POST 请求到 webhookURL
 	// 3. 处理响应和错误
-	
+
 	fmt.Printf("Sending alert to webhook: %s\n", s.webhookURL)
 	return nil
 }
@@ -101,7 +109,7 @@ func (d *dingTalkContainerNotificationService) SendAlert(ctx context.Context, al
 	// 导入 notify 包需要在文件顶部添加
 	// 这里我们直接调用 notify.Send 函数
 	title := fmt.Sprintf("🚨 容器告警 - %s", alert.Title)
-	
+
 	content := fmt.Sprintf(`## %s
 
 **告警级别**: %s

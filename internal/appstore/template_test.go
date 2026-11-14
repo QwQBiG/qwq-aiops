@@ -1,6 +1,7 @@
 package appstore
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -156,11 +157,11 @@ services:
 	}
 
 	// 检查参数是否被正确替换
-	if !contains(rendered, "nginx:1.21") {
+	if !strings.Contains(rendered, "nginx:1.21") {
 		t.Error("版本参数未被正确替换")
 	}
 
-	if !contains(rendered, "8080:80") {
+	if !strings.Contains(rendered, "8080:80") {
 		t.Error("端口参数未被正确替换")
 	}
 }
@@ -391,18 +392,4 @@ func TestParameterTypeValidation(t *testing.T) {
 			}
 		})
 	}
-}
-
-// 辅助函数：检查字符串是否包含子串
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsHelper(s, substr))
-}
-
-func containsHelper(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

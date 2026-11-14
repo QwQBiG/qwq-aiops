@@ -129,10 +129,10 @@ const handleLocaleChange = (lang) => {
 const triggerPatrol = async () => {
   patrolLoading.value = true
   try {
-    await axios.get('/api/trigger')
+    await axios.post('/api/trigger')
     ElMessage.success(t('common.success'))
   } catch (e) {
-    ElMessage.error(t('common.error'))
+    ElMessage.error(e.response?.data?.msg || e.response?.data?.error || t('common.error'))
   } finally {
     setTimeout(() => { patrolLoading.value = false }, 2000)
   }

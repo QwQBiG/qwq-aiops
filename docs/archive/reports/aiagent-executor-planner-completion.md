@@ -230,9 +230,9 @@ result, err := executor.ExecuteTask(ctx, task)
 ## 相关文档
 
 - [AI Agent 任务规划器更新说明](./aiagent-planner-update.md)
-- [需求文档](.kiro/specs/enhanced-aiops-platform/requirements.md)
-- [设计文档](.kiro/specs/enhanced-aiops-platform/design.md)
-- [任务列表](.kiro/specs/enhanced-aiops-platform/tasks.md)
+- [需求文档](../../../.kiro/specs/enhanced-aiops-platform/requirements.md)
+- [设计文档](../../../.kiro/specs/enhanced-aiops-platform/design.md)
+- [任务列表](../../../.kiro/specs/enhanced-aiops-platform/tasks.md)
 
 ## 总结
 

@@ -620,9 +620,9 @@ chmod +x deploy.sh
 ```
 
 **文档资源**:
-- 📖 [部署指南](docs/deployment-guide.md) - 详细的部署和配置说明
-- 📘 [用户手册](docs/user-manual.md) - 完整的功能使用指南
-- 📝 [项目总结](docs/project-completion-summary.md) - 项目完成情况总览
+- 📖 [部署指南](../../../docs/archive/reports/deployment-guide.md) - 详细的部署和配置说明
+- 📘 [用户手册](../../../docs/archive/reports/user-manual.md) - 完整的功能使用指南
+- 📝 [项目总结](../../../docs/archive/reports/project-completion-summary.md) - 项目完成情况总览
 - 🔧 [API 文档](http://localhost:8080/api/docs) - 交互式 API 文档
 
 ### 后续建议

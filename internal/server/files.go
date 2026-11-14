@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"qwq/internal/logger"
 	"sort"
-	"strings"
 	"unicode/utf8"
 )
 
@@ -31,10 +30,10 @@ func getMountPoint() string {
 // BlockList 禁止访问的目录列表
 // 包含系统关键目录，防止误操作导致系统损坏
 var BlockList = []string{
-	"/proc",  // 进程信息虚拟文件系统
-	"/sys",   // 系统信息虚拟文件系统
-	"/dev",   // 设备文件目录
-	"/boot",  // 系统启动文件目录
+	"/proc", // 进程信息虚拟文件系统
+	"/sys",  // 系统信息虚拟文件系统
+	"/dev",  // 设备文件目录
+	"/boot", // 系统启动文件目录
 }
 
 // FileInfo 文件信息结构体
@@ -60,42 +59,12 @@ type FileResponse struct {
 // 统一处理 API 响应格式，设置正确的 Content-Type 头
 func jsonResponse(w http.ResponseWriter, code int, msg string, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(FileResponse{
 		Code: code,
 		Msg:  msg,
 		Data: data,
 	})
-}
-
-// resolveSafePath 安全路径解析函数
-// 防止路径遍历攻击和访问敏感系统目录
-// 参数：userPath - 用户提供的路径
-// 返回：安全的绝对路径和可能的错误
-func resolveSafePath(userPath string) (string, error) {
-	// 清理路径，移除 ".." 等危险元素
-	cleanPath := filepath.Clean(userPath)
-	
-	// 如果用户路径是根路径，直接返回挂载点
-	if cleanPath == "/" || cleanPath == "" {
-		return MountPoint, nil
-	}
-	
-	// 检查是否访问被禁止的系统目录
-	for _, blocked := range BlockList {
-		if strings.HasPrefix(cleanPath, blocked) {
-			return "", fmt.Errorf("access denied: path '%s' is in blocklist", cleanPath)
-		}
-	}
-	
-	// 将用户路径映射到容器内的实际路径
-	realPath := filepath.Join(MountPoint, cleanPath)
-	
-	// 防止路径逃逸攻击（确保路径在挂载点内）
-	if !strings.HasPrefix(realPath, MountPoint) {
-		return "", fmt.Errorf("access denied: path escape detected")
-	}
-	
-	return realPath, nil
 }
 
 // handleFileList 处理文件列表请求
@@ -104,8 +73,8 @@ func resolveSafePath(userPath string) (string, error) {
 func handleFileList(w http.ResponseWriter, r *http.Request) {
 	// 获取用户请求的路径，默认为根目录
 	userPath := r.URL.Query().Get("path")
-	if userPath == "" { 
-		userPath = "/" 
+	if userPath == "" {
+		userPath = "/"
 	}
 
 	// 安全路径解析，防止路径遍历攻击
@@ -126,13 +95,13 @@ func handleFileList(w http.ResponseWriter, r *http.Request) {
 
 	// 构建文件信息列表
 	files := make([]FileInfo, 0)
-	
+
 	for _, entry := range entries {
 		info, err := entry.Info()
-		if err != nil { 
+		if err != nil {
 			continue // 跳过无法获取信息的文件
 		}
-		
+
 		files = append(files, FileInfo{
 			Name:    entry.Name(),
 			Size:    info.Size(),
@@ -176,7 +145,7 @@ func handleFileContent(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, 404, "文件不存在", nil)
 		return
 	}
-	
+
 	// 限制文件大小，防止内存溢出（最大 2MB）
 	if info.Size() > 2*1024*1024 {
 		jsonResponse(w, 400, "文件过大 (>2MB)，不支持在线编辑", nil)
@@ -244,10 +213,15 @@ func handleFileSave(w http.ResponseWriter, r *http.Request) {
 // 支持删除文件/目录和创建目录操作
 // 包含安全检查和审计日志记录
 func handleFileAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		jsonResponse(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
 	// 获取操作类型和目标路径
 	action := r.URL.Query().Get("type")
 	userPath := r.URL.Query().Get("path")
-	
+
 	// 安全路径解析
 	realPath, err := resolveSafePath(userPath)
 	if err != nil {
@@ -259,7 +233,8 @@ func handleFileAction(w http.ResponseWriter, r *http.Request) {
 	switch action {
 	case "delete":
 		// 防止删除根目录的安全检查
-		if userPath == "/" || realPath == MountPoint {
+		root, rootErr := filepath.Abs(MountPoint)
+		if rootErr != nil || realPath == root {
 			jsonResponse(w, 403, "禁止删除根目录", nil)
 			return
 		}
@@ -295,7 +270,7 @@ func handleFileAction(w http.ResponseWriter, r *http.Request) {
 func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 	// 获取目标文件所在目录
 	dir := filepath.Dir(filename)
-	
+
 	// 在同一目录下创建临时文件
 	tmpFile, err := os.CreateTemp(dir, "qwq_tmp_*")
 	if err != nil {
@@ -309,18 +284,18 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 		tmpFile.Close()
 		return err
 	}
-	
+
 	// 强制将数据刷新到磁盘
 	if err := tmpFile.Sync(); err != nil {
 		tmpFile.Close()
 		return err
 	}
-	
+
 	// 关闭临时文件
 	if err := tmpFile.Close(); err != nil {
 		return err
 	}
-	
+
 	// 原子性地将临时文件重命名为目标文件
 	// 这是整个操作的关键步骤，确保原子性
 	return os.Rename(tmpName, filename)

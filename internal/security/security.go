@@ -11,7 +11,7 @@ import (
 var (
 	ipRegex    = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 	emailRegex = regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`)
-	keyRegex   = regexp.MustCompile(`(sk-[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16})`)
+	keyRegex   = regexp.MustCompile(`(sk-(?:proj-|svcacct-)?[a-zA-Z0-9_-]{20,}|AKIA[0-9A-Z]{16})`)
 )
 
 func Redact(input string) string {
@@ -25,7 +25,7 @@ func Redact(input string) string {
 type RiskLevel int
 
 const (
-	RiskLow      RiskLevel = iota
+	RiskLow RiskLevel = iota
 	RiskMedium
 	RiskHigh
 	RiskCritical

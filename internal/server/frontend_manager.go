@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/fs"
+	fsPath "path"
 	"path/filepath"
 	"strings"
 )
@@ -37,12 +38,12 @@ type ResourceStats struct {
 
 // ResourceValidationResult 资源验证结果
 type ResourceValidationResult struct {
-	Valid       bool              `json:"valid"`        // 验证是否通过
-	Errors      []string          `json:"errors"`       // 错误列表
-	Warnings    []string          `json:"warnings"`     // 警告列表
-	Stats       ResourceStats     `json:"stats"`        // 资源统计
-	FileHashes  map[string]string `json:"file_hashes"`  // 文件哈希值
-	Suggestions []string          `json:"suggestions"`  // 修复建议
+	Valid       bool              `json:"valid"`       // 验证是否通过
+	Errors      []string          `json:"errors"`      // 错误列表
+	Warnings    []string          `json:"warnings"`    // 警告列表
+	Stats       ResourceStats     `json:"stats"`       // 资源统计
+	FileHashes  map[string]string `json:"file_hashes"` // 文件哈希值
+	Suggestions []string          `json:"suggestions"` // 修复建议
 }
 
 // IsValid 实现 FrontendValidationResult 接口
@@ -229,7 +230,7 @@ func (fm *FrontendManager) getFS() fs.FS {
 // FileExists 检查文件是否存在
 // 参数 path 为相对于 rootDir 的路径
 func (fm *FrontendManager) FileExists(path string) bool {
-	fullPath := filepath.Join(fm.rootDir, path)
+	fullPath := fsPath.Join(fm.rootDir, path)
 	_, err := fs.Stat(fm.getFS(), fullPath)
 	return err == nil
 }
@@ -237,7 +238,7 @@ func (fm *FrontendManager) FileExists(path string) bool {
 // DirExists 检查目录是否存在
 // 参数 path 为相对于 rootDir 的路径
 func (fm *FrontendManager) DirExists(path string) bool {
-	fullPath := filepath.Join(fm.rootDir, path)
+	fullPath := fsPath.Join(fm.rootDir, path)
 	info, err := fs.Stat(fm.getFS(), fullPath)
 	if err != nil {
 		return false
@@ -248,7 +249,7 @@ func (fm *FrontendManager) DirExists(path string) bool {
 // ReadFile 读取文件内容
 // 参数 path 为相对于 rootDir 的路径，返回文件字节内容
 func (fm *FrontendManager) ReadFile(path string) ([]byte, error) {
-	fullPath := filepath.Join(fm.rootDir, path)
+	fullPath := fsPath.Join(fm.rootDir, path)
 	return fs.ReadFile(fm.getFS(), fullPath)
 }
 

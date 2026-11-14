@@ -12,7 +12,7 @@ import (
 	"github.com/leanovate/gopter/prop"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	
+
 	// 使用纯 Go 实现的 SQLite 驱动
 	_ "modernc.org/sqlite"
 )
@@ -29,8 +29,6 @@ import (
 // 3. 系统会记录详细的故障日志到数据库
 // 4. 故障记录包含必要的信息：容器ID、故障类型、错误消息、操作结果等
 func TestProperty_ContainerSelfHealingCapability(t *testing.T) {
-	// 由于监控循环每10秒检查一次，属性测试会非常耗时
-	// 这里使用较少的测试次数来验证核心属性
 	parameters := gopter.DefaultTestParameters()
 	parameters.MinSuccessfulTests = 5 // 减少到5次测试
 	parameters.MaxSize = 5
@@ -38,7 +36,7 @@ func TestProperty_ContainerSelfHealingCapability(t *testing.T) {
 	properties := gopter.NewProperties(parameters)
 
 	// Property: 对于任何异常容器，系统应该能自动重启并记录故障日志
-	properties.Property("unhealthy containers should be auto-restarted and failures logged", 
+	properties.Property("unhealthy containers should be auto-restarted and failures logged",
 		prop.ForAll(
 			func(containerNum int) bool {
 				// 设置测试环境
@@ -47,22 +45,13 @@ func TestProperty_ContainerSelfHealingCapability(t *testing.T) {
 				notifyService := NewMockNotificationService()
 
 				service := NewSelfHealingService(db, executor, notifyService)
-				// 使用足够长的超时时间
-				ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-				defer cancel()
-
-				// 启动自愈服务
-				if err := service.Start(ctx); err != nil {
-					t.Logf("Failed to start healing service: %v", err)
-					return false
-				}
-				defer service.Stop()
+				ctx := context.Background()
 
 				// 生成唯一的容器ID
 				containerID := fmt.Sprintf("test-container-%d", containerNum)
-				
+
 				// 设置容器为异常状态（stopped）
-				executor.containerStatus[containerID] = "stopped"
+				executor.setStatus(containerID, "stopped")
 
 				// 配置自愈参数（使用固定值以减少变化）
 				config := &HealingConfig{
@@ -81,12 +70,10 @@ func TestProperty_ContainerSelfHealingCapability(t *testing.T) {
 					return false
 				}
 
-				// 等待足够的时间让自愈系统检测并处理
-				// 监控循环每10秒检查一次，FailureThreshold=2，所以需要等待至少2个周期
-				time.Sleep(25 * time.Second)
+				advanceHealingChecks(service, ctx, containerID, config.FailureThreshold)
 
 				// 验证1: 检查是否尝试重启容器
-				restartAttempted := len(executor.startCalls) > 0
+				restartAttempted := executor.restartCount() > 0
 				if !restartAttempted {
 					t.Logf("Expected container %s to be restarted, but no restart calls were made", containerID)
 					return false
@@ -172,7 +159,7 @@ func TestProperty_HealthyContainersNotRestarted(t *testing.T) {
 
 	properties := gopter.NewProperties(parameters)
 
-	properties.Property("healthy containers should not be restarted", 
+	properties.Property("healthy containers should not be restarted",
 		prop.ForAll(
 			func(containerNum int) bool {
 				// 设置测试环境
@@ -181,21 +168,13 @@ func TestProperty_HealthyContainersNotRestarted(t *testing.T) {
 				notifyService := NewMockNotificationService()
 
 				service := NewSelfHealingService(db, executor, notifyService)
-				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-				defer cancel()
-
-				// 启动自愈服务
-				if err := service.Start(ctx); err != nil {
-					t.Logf("Failed to start healing service: %v", err)
-					return false
-				}
-				defer service.Stop()
+				ctx := context.Background()
 
 				// 生成唯一的容器ID
 				containerID := fmt.Sprintf("healthy-%d", containerNum)
-				
+
 				// 设置容器为健康状态
-				executor.containerStatus[containerID] = "running"
+				executor.setStatus(containerID, "running")
 
 				// 配置自愈参数
 				config := &HealingConfig{
@@ -214,13 +193,12 @@ func TestProperty_HealthyContainersNotRestarted(t *testing.T) {
 					return false
 				}
 
-				// 等待多次检查周期（监控循环每10秒一次，等待3个周期）
-				time.Sleep(35 * time.Second)
+				advanceHealingChecks(service, ctx, containerID, 3)
 
 				// 验证：健康容器不应该被重启
-				if len(executor.startCalls) > 0 {
-					t.Logf("Healthy container %s should not be restarted, but got %d restart calls", 
-						containerID, len(executor.startCalls))
+				if executor.restartCount() > 0 {
+					t.Logf("Healthy container %s should not be restarted, but got %d restart calls",
+						containerID, executor.restartCount())
 					return false
 				}
 
@@ -237,7 +215,7 @@ func TestProperty_HealthyContainersNotRestarted(t *testing.T) {
 				}
 
 				if health.ConsecutiveFailures != 0 {
-					t.Logf("Expected 0 consecutive failures for healthy container %s, got %d", 
+					t.Logf("Expected 0 consecutive failures for healthy container %s, got %d",
 						containerID, health.ConsecutiveFailures)
 					return false
 				}
@@ -251,6 +229,16 @@ func TestProperty_HealthyContainersNotRestarted(t *testing.T) {
 	properties.TestingRun(t)
 }
 
+// Advance the configured interval without a background monitor or wall-clock waits.
+func advanceHealingChecks(service SelfHealingService, ctx context.Context, containerID string, count int) {
+	impl := service.(*selfHealingServiceImpl)
+	container := impl.containers[containerID]
+	for i := 0; i < count; i++ {
+		container.health.LastCheckTime = time.Now().Add(-time.Duration(container.config.CheckInterval) * time.Second)
+		impl.checkAllContainers(ctx)
+	}
+}
+
 // setupPropertyTestDB 为属性测试设置数据库
 func setupPropertyTestDB(t *testing.T) *gorm.DB {
 	// 使用 modernc.org/sqlite 纯 Go 驱动
@@ -258,6 +246,8 @@ func setupPropertyTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("Failed to open SQL database: %v", err)
 	}
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { sqlDB.Close() })
 
 	// 使用 GORM 包装
 	db, err := gorm.Open(sqlite.Dialector{Conn: sqlDB}, &gorm.Config{})

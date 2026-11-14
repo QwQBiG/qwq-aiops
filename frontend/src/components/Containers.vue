@@ -73,11 +73,11 @@ const fetchContainers = async () => {
 
 const handleAction = async (id, action) => {
   try {
-    await axios.get(`/api/container/action?id=${id}&action=${action}`)
+    await axios.post('/api/container/action', null, { params: { id, action } })
     ElMessage.success('操作指令已发送')
     setTimeout(fetchContainers, 1000)
   } catch (e) {
-    ElMessage.error('操作失败')
+    ElMessage.error(e.response?.data?.msg || e.response?.data?.error || '操作失败')
   }
 }
 

@@ -3,7 +3,6 @@
 package server
 
 import (
-	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -39,11 +38,8 @@ import (
 var frontendDist embed.FS
 
 var (
-	// WebSocket 升级器配置
-	// 允许所有来源的连接，用于跨域 WebSocket 通信
-	upgrader = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
-	}
+	// Use the upgrader's default same-origin policy for browser connections.
+	upgrader = websocket.Upgrader{}
 	
 	// 外部回调函数，由主程序注入
 	TriggerPatrolFunc func() // 触发系统巡检的回调函数
@@ -188,6 +184,7 @@ func Start(port string) {
 	go collectStatsLoop()
 
 	// 注册核心 API 路由
+	http.HandleFunc("/health", handleLiveness)
 	http.HandleFunc("/api/logs", basicAuth(handleLogs))                         // 获取系统日志
 	http.HandleFunc("/api/stats", basicAuth(handleStats))                       // 获取监控统计数据
 	http.HandleFunc("/api/trigger", basicAuth(handleTrigger))                   // 手动触发巡检
@@ -431,28 +428,6 @@ func handleContainers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(containers)
 }
 
-// handleContainerAction 执行容器操作（启动/停止/重启）
-func handleContainerAction(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
-	action := r.URL.Query().Get("action")
-	
-	// 参数验证
-	if id == "" || action == "" { 
-		http.Error(w, "Missing params", 400)
-		return 
-	}
-	if action != "start" && action != "stop" && action != "restart" { 
-		http.Error(w, "Invalid action", 400)
-		return 
-	}
-	
-	// 执行 Docker 命令
-	cmd := fmt.Sprintf("docker %s %s", action, id)
-	logger.Info("Web操作容器: %s", cmd)
-	utils.ExecuteShell(cmd)
-	w.Write([]byte("success"))
-}
-
 // ============================================
 // 监控数据采集
 // ============================================
@@ -515,35 +490,6 @@ func collectOnePoint() StatsPoint {
 		DiskAvail: diskAvail,
 		TcpConn:   tcpConn,
 		Services:  httpStatus,
-	}
-}
-
-// ============================================
-// 认证中间件
-// ============================================
-
-// basicAuth HTTP 基础认证中间件
-// 如果配置了用户名和密码，则要求客户端提供认证信息
-// 使用 constant time 比较防止时序攻击
-func basicAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		userCfg := config.GlobalConfig.WebUser
-		passCfg := config.GlobalConfig.WebPassword
-		
-		// 未配置认证，直接放行
-		if userCfg == "" || passCfg == "" {
-			next(w, r)
-			return
-		}
-		
-		// 验证认证信息
-		user, pass, ok := r.BasicAuth()
-		if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(userCfg)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(passCfg)) != 1 {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next(w, r)
 	}
 }
 
@@ -645,6 +591,11 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 // handleTrigger 手动触发巡检和状态推送
 // 异步执行，立即返回响应
 func handleTrigger(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if TriggerPatrolFunc != nil { 
 		go TriggerPatrolFunc() 
 	}
@@ -1462,24 +1413,9 @@ func handleAppStoreInstances(w http.ResponseWriter, r *http.Request) {
 		// 获取应用实例列表
 		json.NewEncoder(w).Encode([]interface{}{})
 		
-	case http.MethodPost:
-		// 创建应用实例
-		var form map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
-			return
-		}
-		// 返回成功响应
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"id":         1,
-			"template_id": form["template_id"],
-			"name":       form["name"],
-			"status":     "running",
-		})
-		
-	case http.MethodDelete:
-		// 删除应用实例
-		w.WriteHeader(http.StatusNoContent)
+	case http.MethodPost, http.MethodDelete:
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Application instance management is not connected to the dashboard"})
 		
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1499,36 +1435,9 @@ func handleDatabaseConnections(w http.ResponseWriter, r *http.Request) {
 		// 获取数据库连接列表
 		json.NewEncoder(w).Encode([]interface{}{})
 		
-	case http.MethodPost:
-		// 创建数据库连接
-		var form map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
-			return
-		}
-		// 返回成功响应
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"id":       1,
-			"name":     form["name"],
-			"type":     form["type"],
-			"host":     form["host"],
-			"port":     form["port"],
-			"database": form["database"],
-			"status":   "connected",
-		})
-		
-	case http.MethodPut:
-		// 更新数据库连接
-		var form map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&form); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
-			return
-		}
-		json.NewEncoder(w).Encode(form)
-		
-	case http.MethodDelete:
-		// 删除数据库连接
-		w.WriteHeader(http.StatusNoContent)
+	case http.MethodPost, http.MethodPut, http.MethodDelete:
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Database connection management is not connected to the dashboard"})
 		
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

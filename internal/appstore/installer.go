@@ -273,21 +273,21 @@ func (s *installerServiceImpl) executeInstallation(ctx context.Context, instance
 		return
 	}
 
-	// 更新进度：完成
-	s.progressStore.Update(progress.ID, StatusCompleted, "Installation completed successfully", 5, 5)
-
 	// 更新实例状态
 	instance.Status = "running"
 	if err := s.appStoreService.UpdateInstance(ctx, instance); err != nil {
 		// 记录错误但不回滚，因为应用已经部署成功
 		s.progressStore.SetError(progress.ID, fmt.Sprintf("failed to update instance status: %v", err))
+		return
 	}
+	s.progressStore.Update(progress.ID, StatusCompleted, "Installation completed successfully", 5, 5)
 }
 
 // handleInstallationError 处理安装错误
 func (s *installerServiceImpl) handleInstallationError(ctx context.Context, instance *ApplicationInstance, progress *InstallationProgress, step string, err error) {
 	// 更新进度为失败
-	s.progressStore.Update(progress.ID, StatusFailed, fmt.Sprintf("Failed at step: %s", step), progress.CompletedSteps, progress.TotalSteps)
+	current := s.progressStore.Get(progress.ID)
+	s.progressStore.Update(progress.ID, StatusFailed, fmt.Sprintf("Failed at step: %s", step), current.CompletedSteps, current.TotalSteps)
 	s.progressStore.SetError(progress.ID, err.Error())
 
 	// 更新实例状态

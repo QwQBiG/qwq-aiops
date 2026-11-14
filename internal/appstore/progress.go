@@ -38,7 +38,8 @@ func (s *ProgressStore) Create(instanceID uint) *InstallationProgress {
 	}
 
 	s.progresses[progress.ID] = progress
-	return progress
+	snapshot := *progress
+	return &snapshot
 }
 
 // Get 获取安装进度
@@ -46,7 +47,12 @@ func (s *ProgressStore) Get(progressID string) *InstallationProgress {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return s.progresses[progressID]
+	progress := s.progresses[progressID]
+	if progress == nil {
+		return nil
+	}
+	snapshot := *progress
+	return &snapshot
 }
 
 // Update 更新安装进度
@@ -148,7 +154,8 @@ func (s *ProgressStore) GetByInstanceID(instanceID uint) []*InstallationProgress
 	result := make([]*InstallationProgress, 0)
 	for _, progress := range s.progresses {
 		if progress.InstanceID == instanceID {
-			result = append(result, progress)
+			snapshot := *progress
+			result = append(result, &snapshot)
 		}
 	}
 

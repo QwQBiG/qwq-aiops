@@ -48,6 +48,9 @@ frontend/.nuxt/
 frontend/.output/
 frontend/.cache/
 
+# The frontend stage supplies fresh assets to the backend stage.
+internal/server/dist/
+
 # 数据和日志
 data/
 logs/
