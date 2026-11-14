@@ -1,5 +1,5 @@
 # Build the frontend with the same entry point used locally and in CI.
-FROM node:22-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ COPY scripts/build.mjs ./scripts/build.mjs
 RUN node scripts/build.mjs --frontend-only
 
 # --- Stage 2: 后端构建 ---
-FROM golang:1.23-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS backend-builder
 
 WORKDIR /app
 
