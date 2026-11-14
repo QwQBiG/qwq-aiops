@@ -2,17 +2,25 @@ package appstore
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"testing"
 	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
 )
 
 // setupSimpleTestDB 设置测试数据库
 func setupSimpleTestDB(t *testing.T) *gorm.DB {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { sqlDB.Close() })
+	db, err := gorm.Open(sqlite.Dialector{Conn: sqlDB}, &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
@@ -42,7 +50,7 @@ services:
     ports:
       - "{{.Port}}:80"
     volumes:
-      - {{.DataPath}}:/usr/share/nginx/html`,
+      - "{{.DataPath}}:/usr/share/nginx/html"`,
 		Parameters: `[
 			{
 				"name": "Version",
@@ -117,13 +125,18 @@ func TestSimpleInstallerService_Install(t *testing.T) {
 			t.Errorf("期望状态为 %s，实际为 %s", StatusPending, result.Status)
 		}
 
-		// 等待安装完成
-		time.Sleep(200 * time.Millisecond)
-
-		// 检查进度
-		progress, err := installerService.GetProgress(ctx, result.ProgressID)
-		if err != nil {
-			t.Fatalf("获取进度失败: %v", err)
+		// Wait for the asynchronous installer to publish a terminal result.
+		var progress *InstallationProgress
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			progress, err = installerService.GetProgress(ctx, result.ProgressID)
+			if err != nil {
+				t.Fatalf("获取进度失败: %v", err)
+			}
+			if progress.Status == StatusCompleted || progress.Status == StatusFailed {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
 
 		if progress.Status != StatusCompleted {

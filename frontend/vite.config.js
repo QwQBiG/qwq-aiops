@@ -32,7 +32,8 @@ export default defineConfig({
       // API 请求代理到后端 8080 端口
       '/api': {
         target: 'http://localhost:8080',
-        changeOrigin: true
+        // Keep the browser's Host for same-origin request checks.
+        changeOrigin: false
       },
       // WebSocket 连接代理
       '/ws': {

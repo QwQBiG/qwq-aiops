@@ -391,13 +391,13 @@ func TestProperty_DingTalkWebhookValidation(t *testing.T) {
 			switch webhookType {
 			case "dingtalk":
 				// 钉钉机器人 Webhook 格式：必须包含 access_token 参数
-				validURL = "https://..."
+				validURL = "https://oapi.dingtalk.com/robot/send?access_token=test-token"
 			case "wechat":
 				// 企业微信机器人 Webhook 格式：必须包含 key 参数
-				validURL = "https://..."
+				validURL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key"
 			case "slack":
 				// Slack Webhook 格式：路径必须以 /services/ 开头
-				validURL = "https://..."
+				validURL = "https://hooks.slack.com/services/test/team/token"
 			default:
 				return true
 			}

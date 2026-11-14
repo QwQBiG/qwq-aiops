@@ -149,7 +149,7 @@ func (s *NLUServiceImpl) matchIntentByRules(text string) (Intent, float64) {
 	}
 	
 	// 查询相关关键词
-	queryKeywords := []string{"查看", "看看", "显示", "状态", "列表", "show", "list", "status", "check", "view"}
+	queryKeywords := []string{"查看", "看看", "显示", "状态", "运行情况", "列表", "show", "list", "status", "check", "view"}
 	for _, keyword := range queryKeywords {
 		if strings.Contains(text, keyword) {
 			return IntentQuery, 0.8
@@ -343,7 +343,13 @@ func (s *NLUServiceImpl) extractServiceEntities(text string) []Entity {
 				Confidence: 0.9,
 			})
 		}
-		
+	}
+	// A canonical service name takes precedence over broad aliases such as "db".
+	// Otherwise "mongodb" also matches the MySQL alias and depends on list order.
+	if len(entities) > 0 {
+		return entities
+	}
+	for _, service := range s.services {
 		// 检查别名
 		for _, alias := range service.Aliases {
 			if strings.Contains(text, strings.ToLower(alias)) {

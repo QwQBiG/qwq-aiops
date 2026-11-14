@@ -278,9 +278,9 @@ go test -v ./internal/aiagent -run TestTaskExecutionPerformance
 ## 相关文档
 
 - [AI Agent 任务执行引擎完成报告](./aiagent-executor-planner-completion.md)
-- [需求文档](../.kiro/specs/enhanced-aiops-platform/requirements.md)
-- [设计文档](../.kiro/specs/enhanced-aiops-platform/design.md)
-- [任务列表](../.kiro/specs/enhanced-aiops-platform/tasks.md)
+- [需求文档](../../../.kiro/specs/enhanced-aiops-platform/requirements.md)
+- [设计文档](../../../.kiro/specs/enhanced-aiops-platform/design.md)
+- [任务列表](../../../.kiro/specs/enhanced-aiops-platform/tasks.md)
 
 ## 总结
 

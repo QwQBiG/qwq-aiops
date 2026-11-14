@@ -1,7 +1,11 @@
-qwq
-qwq.exe
+/qwq
+/qwq.exe
 *.log
 .env
+/data/
+/logs/
+/backups/
+/coverage.txt
 
 # 忽略构建产物
 /bin/
@@ -29,3 +33,10 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/.cache/
+
+# Generated embedded frontend; keep the source checkout placeholders.
+/internal/server/dist/*
+!/internal/server/dist/placeholder.txt
+!/internal/server/dist/assets/
+/internal/server/dist/assets/*
+!/internal/server/dist/assets/placeholder.js

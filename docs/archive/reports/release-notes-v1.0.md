@@ -421,24 +421,24 @@ DOCKER_HOST=unix:///var/run/docker.sock  # Docker 守护进程地址
 
 ### 用户文档
 
-- [快速开始指南](docs/user-manual.md#快速开始)
-- [功能使用手册](docs/user-manual.md)
-- [常见问题解答](docs/user-manual.md#常见问题)
-- [故障排查指南](docs/deployment-guide.md#故障排查)
+- [快速开始指南](user-manual.md#快速入门)
+- [功能使用手册](user-manual.md)
+- [常见问题解答](user-manual.md#常见问题)
+- [故障排查指南](deployment-guide.md#故障排查)
 
 ### 技术文档
 
-- [部署指南](docs/deployment-guide.md)
+- [部署指南](deployment-guide.md)
 - [API 文档](http://localhost:8080/api/docs)
-- [架构设计](docs/project-completion-summary.md)
-- [性能优化](docs/performance-optimization-report.md)
-- [安全审计](docs/security-audit-report.md)
+- [架构设计](project-completion-summary.md)
+- [性能优化](performance-optimization-report.md)
+- [安全审计](security-audit-report.md)
 
 ### 开发文档
 
-- [开发环境搭建](README.md#开发)
-- [代码贡献指南](CONTRIBUTING.md)
-- [测试指南](docs/e2e-testing-report.md)
+- [开发环境搭建](../../development.md)
+- [代码贡献指南](../../../CONTRIBUTING.md)
+- [测试指南](e2e-testing-report.md)
 
 ## 社区和支持
 
@@ -451,7 +451,7 @@ DOCKER_HOST=unix:///var/run/docker.sock  # Docker 守护进程地址
 
 ### 贡献
 
-我们欢迎社区贡献！请查看 [贡献指南](CONTRIBUTING.md) 了解如何参与。
+我们欢迎社区贡献！请查看 [贡献指南](../../../CONTRIBUTING.md) 了解如何参与。
 
 **贡献方式**:
 - 报告 Bug
@@ -488,7 +488,7 @@ DOCKER_HOST=unix:///var/run/docker.sock  # Docker 守护进程地址
 
 ## 许可证
 
-qwq AIOps 平台采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+历史版本曾声明采用 MIT 许可证；仓库当前没有对应的许可证文件，请勿将该历史声明当作授权依据。
 
 ---
 

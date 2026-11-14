@@ -1,38 +1,14 @@
-# ============================================
-# qwq AIOps Platform - 修复版 Dockerfile
-# 解决前端 404 问题的完整方案
-# ============================================
-
-# --- Stage 1: 前端构建 ---
-FROM node:18-alpine AS frontend-builder
+# Build the frontend with the same entry point used locally and in CI.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
 
 WORKDIR /app
 
-# 使用国内镜像源加速
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
-    npm config set registry https://registry.npmmirror.com
-
-# 复制前端项目文件
-COPY frontend/package*.json ./frontend/
-WORKDIR /app/frontend
-
-# 安装依赖（包含开发依赖，因为构建需要）
-RUN npm ci
-
-# 复制前端源码并构建
-COPY frontend/ .
-RUN npm run build
-
-# 验证前端构建结果
-RUN echo "=== 前端构建验证 ===" && \
-    ls -lh dist/ && \
-    echo "Assets 文件:" && \
-    ls -lh dist/assets/ | head -5 && \
-    echo "Plugin 文件:" && \
-    find dist -name "*plugin*" -type f
+COPY frontend/ ./frontend/
+COPY scripts/build.mjs ./scripts/build.mjs
+RUN node scripts/build.mjs --frontend-only
 
 # --- Stage 2: 后端构建 ---
-FROM golang:1.23-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS backend-builder
 
 WORKDIR /app
 
@@ -49,35 +25,16 @@ ENV CGO_ENABLED=0
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 
-# 先创建目标目录结构
-RUN mkdir -p internal/server/dist
-
-# 从前端构建阶段复制构建产物到 Go embed 路径
-COPY --from=frontend-builder /app/frontend/dist ./internal/server/dist
-
-# 复制 Go 源码
+# Copy generated assets last so checkout placeholders cannot replace them.
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
-
-# 最终验证：确保 Go embed 能找到文件
-RUN echo "=== Go Embed 路径验证 ===" && \
-    echo "当前目录: $(pwd)" && \
-    echo "internal/server/dist 内容:" && \
-    ls -la ./internal/server/dist/ && \
-    echo "Assets 目录:" && \
-    ls -la ./internal/server/dist/assets/ | head -10 && \
-    echo "Plugin 文件:" && \
-    find ./internal/server/dist -name "*plugin*" -type f && \
-    echo "文件总数: $(find ./internal/server/dist -type f | wc -l)" && \
-    echo "=== 验证关键文件 ===" && \
-    test -f ./internal/server/dist/assets/_plugin-vue_export-helper-DlAUqK2U.js && echo "✓ Plugin helper 文件存在" || echo "✗ Plugin helper 文件不存在" && \
-    echo "文件大小: $(ls -lh ./internal/server/dist/assets/_plugin-vue_export-helper-DlAUqK2U.js 2>/dev/null || echo '文件不存在')"
+COPY --from=frontend-builder /app/internal/server/dist ./internal/server/dist
 # 编译 Go 程序
 ARG TARGETARCH
 RUN GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags="-w -s -X main.Version=1.0.0" \
     -o qwq \
-    ./cmd/qwq/main.go
+    ./cmd/qwq
 
 # 验证编译结果
 RUN chmod +x qwq && ls -lh qwq

@@ -18,6 +18,13 @@ jobs:
       with:
         go-version: '1.23'
 
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+
     - name: Cache Go modules
       uses: actions/cache@v4
       with:
@@ -29,16 +36,23 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    - name: Build embedded frontend
+      run: node scripts/build.mjs --frontend-only
+
+    - name: Save embedded frontend
+      uses: actions/upload-artifact@v4
+      with:
+        name: embedded-frontend
+        path: internal/server/dist/
+        if-no-files-found: error
+
     - name: Run tests
-      run: |
-        # 临时跳过有编译错误的包
-        go test -v -race -coverprofile=coverage.txt -covermode=atomic \
-          $(go list ./... | grep -v '/appstore$' | grep -v '/dbmanager$')
+      run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
-        file: ./coverage.txt
+        files: ./coverage.txt
         flags: unittests
         name: codecov-umbrella
 
@@ -61,16 +75,23 @@ jobs:
       with:
         go-version: '1.23'
 
+    - name: Restore embedded frontend
+      uses: actions/download-artifact@v4
+      with:
+        name: embedded-frontend
+        path: internal/server/dist/
+
     - name: Build
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: '0'
       run: |
         OUTPUT_NAME=qwq-${{ matrix.goos }}-${{ matrix.goarch }}
         if [ "${{ matrix.goos }}" = "windows" ]; then
           OUTPUT_NAME="${OUTPUT_NAME}.exe"
         fi
-        go build -v -ldflags="-w -s" -o ${OUTPUT_NAME} ./cmd/qwq/main.go
+        go build -trimpath -ldflags="-w -s" -o "${OUTPUT_NAME}" ./cmd/qwq
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4

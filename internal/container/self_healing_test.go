@@ -3,22 +3,25 @@ package container
 import (
 	"context"
 	"database/sql"
+	"sync"
 	"testing"
 	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	
+
 	// 使用纯 Go 实现的 SQLite 驱动
 	_ "modernc.org/sqlite"
 )
 
 // mockDockerExecutor 用于测试的 Mock Docker 执行器
 type mockDockerExecutor struct {
+	mu              sync.Mutex
 	containerStatus map[string]string
 	containerInfo   map[string]*ContainerInfo
 	startCalls      []string
 	stopCalls       []string
+	startStatus     string
 }
 
 func newMockDockerExecutor() *mockDockerExecutor {
@@ -27,6 +30,7 @@ func newMockDockerExecutor() *mockDockerExecutor {
 		containerInfo:   make(map[string]*ContainerInfo),
 		startCalls:      make([]string, 0),
 		stopCalls:       make([]string, 0),
+		startStatus:     "running",
 	}
 }
 
@@ -55,23 +59,31 @@ func (m *mockDockerExecutor) GetServiceContainers(ctx context.Context, projectNa
 }
 
 func (m *mockDockerExecutor) StartContainer(ctx context.Context, containerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.startCalls = append(m.startCalls, containerID)
-	m.containerStatus[containerID] = "running"
+	m.containerStatus[containerID] = m.startStatus
 	return nil
 }
 
 func (m *mockDockerExecutor) StopContainer(ctx context.Context, containerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.stopCalls = append(m.stopCalls, containerID)
 	m.containerStatus[containerID] = "stopped"
 	return nil
 }
 
 func (m *mockDockerExecutor) RemoveContainer(ctx context.Context, containerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	delete(m.containerStatus, containerID)
 	return nil
 }
 
 func (m *mockDockerExecutor) GetContainerStatus(ctx context.Context, containerID string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if status, ok := m.containerStatus[containerID]; ok {
 		return status, nil
 	}
@@ -79,6 +91,8 @@ func (m *mockDockerExecutor) GetContainerStatus(ctx context.Context, containerID
 }
 
 func (m *mockDockerExecutor) GetContainerInfo(ctx context.Context, containerID string) (*ContainerInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if info, ok := m.containerInfo[containerID]; ok {
 		return info, nil
 	}
@@ -93,12 +107,26 @@ func (m *mockDockerExecutor) GetContainerInfo(ctx context.Context, containerID s
 	}, nil
 }
 
+func (m *mockDockerExecutor) setStatus(containerID, status string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.containerStatus[containerID] = status
+}
+
+func (m *mockDockerExecutor) restartCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.startCalls)
+}
+
 func setupTestDB(t *testing.T) *gorm.DB {
 	// 使用 modernc.org/sqlite 纯 Go 驱动
 	sqlDB, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("Failed to open SQL database: %v", err)
 	}
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { sqlDB.Close() })
 
 	// 使用 GORM 包装
 	db, err := gorm.Open(sqlite.Dialector{Conn: sqlDB}, &gorm.Config{})
@@ -169,7 +197,7 @@ func TestSelfHealingService_HealthyContainer(t *testing.T) {
 	defer service.Stop()
 
 	containerID := "healthy-container"
-	executor.containerStatus[containerID] = "running"
+	executor.setStatus(containerID, "running")
 
 	config := &HealingConfig{
 		CheckInterval:    1, // 1秒检查一次（测试用）
@@ -204,8 +232,8 @@ func TestSelfHealingService_HealthyContainer(t *testing.T) {
 	}
 
 	// 不应该有重启
-	if len(executor.startCalls) > 0 {
-		t.Errorf("Expected no restart calls, got %d", len(executor.startCalls))
+	if executor.restartCount() > 0 {
+		t.Errorf("Expected no restart calls, got %d", executor.restartCount())
 	}
 }
 
@@ -224,7 +252,7 @@ func TestSelfHealingService_UnhealthyContainerAutoRestart(t *testing.T) {
 	defer service.Stop()
 
 	containerID := "unhealthy-container"
-	executor.containerStatus[containerID] = "stopped" // 容器停止
+	executor.setStatus(containerID, "stopped")
 
 	config := &HealingConfig{
 		CheckInterval:    1, // 1秒检查一次
@@ -241,12 +269,11 @@ func TestSelfHealingService_UnhealthyContainerAutoRestart(t *testing.T) {
 		t.Fatalf("Failed to register container: %v", err)
 	}
 
-	// 等待自愈触发
-	// 监控循环每10秒检查一次，FailureThreshold=2，所以需要等待至少2个周期
-	time.Sleep(25 * time.Second)
+	// Allow two failed checks and the subsequent restart to complete.
+	time.Sleep(5 * time.Second)
 
 	// 检查是否尝试重启
-	if len(executor.startCalls) == 0 {
+	if executor.restartCount() == 0 {
 		t.Error("Expected container to be restarted, but no restart calls were made")
 	}
 
@@ -270,6 +297,8 @@ func TestSelfHealingService_UnhealthyContainerAutoRestart(t *testing.T) {
 func TestSelfHealingService_RestartLimit(t *testing.T) {
 	db := setupTestDB(t)
 	executor := newMockDockerExecutor()
+	// Model a container that exits again after each successful restart.
+	executor.startStatus = "stopped"
 	notifyService := NewMockNotificationService()
 
 	service := NewSelfHealingService(db, executor, notifyService)
@@ -282,12 +311,12 @@ func TestSelfHealingService_RestartLimit(t *testing.T) {
 	defer service.Stop()
 
 	containerID := "flapping-container"
-	executor.containerStatus[containerID] = "stopped"
+	executor.setStatus(containerID, "stopped")
 
 	config := &HealingConfig{
 		CheckInterval:    1,
 		CheckTimeout:     5,
-		FailureThreshold: 1, // 失败1次就触发
+		FailureThreshold: 1,  // 失败1次就触发
 		MaxRestarts:      2,  // 最多重启2次
 		RestartWindow:    10, // 10秒窗口
 		AutoRestart:      true,
@@ -303,7 +332,7 @@ func TestSelfHealingService_RestartLimit(t *testing.T) {
 	time.Sleep(8 * time.Second)
 
 	// 检查重启次数不应超过限制
-	restartCount := len(executor.startCalls)
+	restartCount := executor.restartCount()
 	if restartCount > config.MaxRestarts {
 		t.Errorf("Expected at most %d restarts, got %d", config.MaxRestarts, restartCount)
 	}
@@ -338,7 +367,7 @@ func TestSelfHealingService_NoAutoRestart(t *testing.T) {
 	defer service.Stop()
 
 	containerID := "no-restart-container"
-	executor.containerStatus[containerID] = "stopped"
+	executor.setStatus(containerID, "stopped")
 
 	config := &HealingConfig{
 		CheckInterval:    1,
@@ -359,8 +388,8 @@ func TestSelfHealingService_NoAutoRestart(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// 不应该有重启
-	if len(executor.startCalls) > 0 {
-		t.Errorf("Expected no restart calls when AutoRestart is false, got %d", len(executor.startCalls))
+	if executor.restartCount() > 0 {
+		t.Errorf("Expected no restart calls when AutoRestart is false, got %d", executor.restartCount())
 	}
 
 	// 应该有告警

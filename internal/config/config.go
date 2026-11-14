@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // PatrolRule Shell 巡检规则
@@ -55,8 +56,40 @@ func Init(configPath string) error {
 	if envBase := os.Getenv("OPENAI_BASE_URL"); envBase != "" {
 		GlobalConfig.BaseURL = envBase
 	}
+	if model := os.Getenv("OPENAI_MODEL"); model != "" {
+		GlobalConfig.Model = model
+	}
+	if webhook := os.Getenv("DINGTALK_WEBHOOK"); webhook != "" {
+		GlobalConfig.DingTalkWebhook = webhook
+	}
+	if user := os.Getenv("WEB_USER"); user != "" {
+		GlobalConfig.WebUser = user
+	}
+	if password := os.Getenv("WEB_PASSWORD"); password != "" {
+		GlobalConfig.WebPassword = password
+	}
+	if (GlobalConfig.WebUser == "") != (GlobalConfig.WebPassword == "") {
+		return errors.New("WEB_USER and WEB_PASSWORD must be configured together")
+	}
 
-	// 必填检查 (Ollama 模式下 ApiKey 可以随便填，但不能为空)
+	switch provider := os.Getenv("AI_PROVIDER"); provider {
+	case "", "openai":
+	case "ollama":
+		host := strings.TrimRight(os.Getenv("OLLAMA_HOST"), "/")
+		if host == "" {
+			host = "http://localhost:11434"
+		}
+		GlobalConfig.BaseURL = host + "/v1"
+		GlobalConfig.ApiKey = "ollama"
+		GlobalConfig.Model = os.Getenv("OLLAMA_MODEL")
+		if GlobalConfig.Model == "" {
+			GlobalConfig.Model = "qwen2.5:7b"
+		}
+	default:
+		return fmt.Errorf("unsupported provider: %q", provider)
+	}
+
+	// The client requires a key; local Ollama uses a placeholder.
 	if GlobalConfig.ApiKey == "" {
 		return errors.New("critical: 未找到 API Key")
 	}

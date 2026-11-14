@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 	"github.com/leanovate/gopter/prop"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	
+
 	_ "modernc.org/sqlite"
 )
 
@@ -32,7 +33,7 @@ import (
 // 5. 最终的成功/失败状态被正确记录
 func TestProperty22_AutomatedTaskExecutionReliability(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 20  // 减少测试次数以加快速度
+	parameters.MinSuccessfulTests = 20 // 减少测试次数以加快速度
 
 	properties := gopter.NewProperties(parameters)
 
@@ -40,21 +41,21 @@ func TestProperty22_AutomatedTaskExecutionReliability(t *testing.T) {
 		func(eventType string, shouldSucceed bool) bool {
 			// 设置测试环境
 			db := setupWebhookTestDB(t)
-			
+
 			// 创建测试 HTTP 服务器
-			callCount := 0
+			var callCount atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				callCount++
-				
+				callCount.Add(1)
+
 				// 验证请求头
 				if r.Header.Get("Content-Type") != "application/json" {
 					t.Logf("Content-Type 不正确")
 				}
-				
+
 				if r.Header.Get("User-Agent") != "QWQ-Webhook/1.0" {
 					t.Logf("User-Agent 不正确")
 				}
-				
+
 				// 根据测试参数决定成功或失败
 				if shouldSucceed {
 					w.WriteHeader(http.StatusOK)
@@ -103,23 +104,11 @@ func TestProperty22_AutomatedTaskExecutionReliability(t *testing.T) {
 				return false
 			}
 
-			// 等待 Webhook 投递完成（异步操作）
-			time.Sleep(3 * time.Second)
-
-			// 查询事件日志
-			logs, err := service.ListEvents(ctx, webhook.ID)
-			if err != nil {
-				t.Logf("查询事件日志失败: %v", err)
+			// Wait for the final persisted result, including both retries.
+			log, ok := waitForWebhookLog(t, service, webhook.ID, 5*time.Second)
+			if !ok {
 				return false
 			}
-
-			// 验证：应该有事件日志记录
-			if len(logs) == 0 {
-				t.Logf("没有找到事件日志")
-				return false
-			}
-
-			log := logs[0]
 
 			// 验证：日志应该包含 payload
 			if log.Payload == "" {
@@ -175,11 +164,11 @@ func TestProperty22_AutomatedTaskExecutionReliability(t *testing.T) {
 					t.Logf("失败的请求应该有重试记录")
 					return false
 				}
-				
+
 				// 验证：实际调用次数应该等于 1 + 重试次数
-				expectedCalls := 1 + webhook.RetryCount
-				if callCount != expectedCalls {
-					t.Logf("期望调用 %d 次，实际调用 %d 次", expectedCalls, callCount)
+				expectedCalls := int32(1 + webhook.RetryCount)
+				if count := callCount.Load(); count != expectedCalls {
+					t.Logf("期望调用 %d 次，实际调用 %d 次", expectedCalls, count)
 					return false
 				}
 			}
@@ -216,11 +205,14 @@ func TestProperty22_WebhookSignatureVerification(t *testing.T) {
 
 			// 设置测试环境
 			db := setupWebhookTestDB(t)
-			
-			var receivedSignature string
+
+			signatures := make(chan string, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// 获取签名
-				receivedSignature = r.Header.Get("X-Webhook-Signature")
+				select {
+				case signatures <- r.Header.Get("X-Webhook-Signature"):
+				default:
+				}
 				w.WriteHeader(http.StatusOK)
 			}))
 			defer server.Close()
@@ -260,8 +252,16 @@ func TestProperty22_WebhookSignatureVerification(t *testing.T) {
 				return false
 			}
 
-			// 等待投递完成
-			time.Sleep(1 * time.Second)
+			if _, ok := waitForWebhookLog(t, service, webhook.ID, time.Second); !ok {
+				return false
+			}
+			var receivedSignature string
+			select {
+			case receivedSignature = <-signatures:
+			default:
+				t.Logf("No signed request was received")
+				return false
+			}
 
 			// 验证：应该收到签名
 			if receivedSignature == "" {
@@ -278,8 +278,8 @@ func TestProperty22_WebhookSignatureVerification(t *testing.T) {
 
 			return true
 		},
-		gen.AlphaString(),  // secret
-		gen.AlphaString(),  // payload
+		gen.AlphaString(), // secret
+		gen.AlphaString(), // payload
 	))
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
@@ -298,10 +298,15 @@ func TestProperty22_WebhookEventFiltering(t *testing.T) {
 		func(subscribedEvent string, triggeredEvent string) bool {
 			// 设置测试环境
 			db := setupWebhookTestDB(t)
-			
-			callCount := 0
+
+			var callCount atomic.Int32
+			calls := make(chan struct{}, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				callCount++
+				callCount.Add(1)
+				select {
+				case calls <- struct{}{}:
+				default:
+				}
 				w.WriteHeader(http.StatusOK)
 			}))
 			defer server.Close()
@@ -340,21 +345,23 @@ func TestProperty22_WebhookEventFiltering(t *testing.T) {
 				return false
 			}
 
-			// 等待投递完成
-			time.Sleep(1 * time.Second)
-
 			// 验证：只有订阅的事件才应该被投递
 			shouldReceive := subscribedEvent == triggeredEvent
-			
+
 			if shouldReceive {
-				if callCount == 0 {
+				if _, ok := waitForWebhookLog(t, service, webhook.ID, time.Second); !ok {
+					return false
+				}
+				if callCount.Load() != 1 {
 					t.Logf("订阅的事件应该被投递")
 					return false
 				}
 			} else {
-				if callCount > 0 {
+				select {
+				case <-calls:
 					t.Logf("未订阅的事件不应该被投递")
 					return false
+				case <-time.After(50 * time.Millisecond):
 				}
 			}
 
@@ -382,6 +389,9 @@ func setupWebhookTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("打开 SQL 数据库失败: %v", err)
 	}
+	// Each in-memory SQLite connection has its own database.
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { sqlDB.Close() })
 
 	db, err := gorm.Open(sqlite.Dialector{Conn: sqlDB}, &gorm.Config{})
 	if err != nil {
@@ -394,4 +404,28 @@ func setupWebhookTestDB(t *testing.T) *gorm.DB {
 	}
 
 	return db
+}
+
+func waitForWebhookLog(t *testing.T, service WebhookService, id uint, timeout time.Duration) (*EventLog, bool) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		logs, err := service.ListEvents(ctx, id)
+		if err != nil {
+			t.Logf("Querying webhook result: %v", err)
+			return nil, false
+		}
+		if len(logs) != 0 {
+			return logs[0], true
+		}
+		select {
+		case <-ctx.Done():
+			t.Logf("Timed out waiting for webhook %d", id)
+			return nil, false
+		case <-ticker.C:
+		}
+	}
 }

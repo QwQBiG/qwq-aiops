@@ -121,7 +121,7 @@ const loadFiles = async (path) => {
     }
   } catch (e) {
     console.error('加载失败:', e)
-    ElMessage.error('加载失败: ' + e.message)
+    ElMessage.error(e.response?.data?.msg || '加载失败: ' + e.message)
     // 出错时设置为空数组，避免渲染错误
     files.value = []
   } finally {
@@ -149,7 +149,7 @@ const editFile = async (row) => {
     currentFile.value = filePath
     showEditor.value = true
   } catch (e) {
-    ElMessage.error('无法读取文件')
+    ElMessage.error(e.response?.data?.msg || '无法读取文件')
   }
 }
 
@@ -164,7 +164,7 @@ const saveFile = async () => {
     ElMessage.success('保存成功')
     showEditor.value = false
   } catch (e) {
-    ElMessage.error('保存失败')
+    ElMessage.error(e.response?.data?.msg || '保存失败')
   } finally {
     saving.value = false
   }
@@ -178,9 +178,13 @@ const deleteFile = (row) => {
     type: 'warning',
   }).then(async () => {
     const filePath = currentPath.value === '/' ? '/' + row.name : currentPath.value + '/' + row.name
-    await axios.get(`/api/files/action?type=delete&path=${encodeURIComponent(filePath)}`)
+    await axios.post(`/api/files/action?type=delete&path=${encodeURIComponent(filePath)}`)
     ElMessage.success('已删除')
     refresh()
+  }).catch(error => {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error.response?.data?.msg || '删除失败')
+    }
   })
 }
 
@@ -189,13 +193,13 @@ const createDir = async () => {
   if (!newDirName.value) return
   const newPath = currentPath.value === '/' ? '/' + newDirName.value : currentPath.value + '/' + newDirName.value
   try {
-    await axios.get(`/api/files/action?type=mkdir&path=${encodeURIComponent(newPath)}`)
+    await axios.post(`/api/files/action?type=mkdir&path=${encodeURIComponent(newPath)}`)
     ElMessage.success('创建成功')
     showMkdir.value = false
     newDirName.value = ''
     refresh()
   } catch (e) {
-    ElMessage.error('创建失败')
+    ElMessage.error(e.response?.data?.msg || '创建失败')
   }
 }
 

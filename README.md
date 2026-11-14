@@ -1,569 +1,78 @@
-# qwq AIOps - AI 驱动的智能运维平台
+# qwq Ops
 
-<div align="center">
+简体中文 | [English](README_EN.md)
 
-![qwq AIOps](https://img.shields.io/badge/qwq-AIOps-blue?style=for-the-badge)
-![Version](https://img.shields.io/badge/version-1.0.0-green?style=for-the-badge)
-![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)
+qwq Ops 是一个 Go + Vue 3 运维工作台，提供系统状态查看、Docker 容器操作、文件管理、巡检通知和模型对话。它适合在受控环境中运行和继续开发；终端与容器操作会直接影响运行服务的机器。
 
-**[English](./README_EN.md)** | 简体中文
+## 先了解当前范围
 
-一个基于 AI 的现代化智能运维平台，提供容器管理、系统监控、自动化运维等功能
+Web 服务使用 Go 标准库 `net/http`，前端由 Vite 构建后嵌入 Go 二进制。常用入口包括仪表盘、容器、文件、日志和终端。
 
-[快速开始](#快速开始) • [功能特性](#功能特性) • [部署指南](#部署指南) • [文档](#文档)
+仓库也包含数据库、应用商店、网站、备份、集群等业务包。它们的实现程度和 Web 接入程度不同：网站、用户和角色等部分接口使用进程内存保存数据，重启后不会保留，用户与角色页面也不构成完整的权限隔离。请先阅读[架构与功能边界](docs/architecture.md)，再决定接入哪些模块。
 
-</div>
+## 从源码运行
 
----
-
-## 📖 目录
-
-- [项目简介](#项目简介)
-- [功能特性](#功能特性)
-- [技术架构](#技术架构)
-- [快速开始](#快速开始)
-- [部署指南](#部署指南)
-- [配置说明](#配置说明)
-- [使用文档](#使用文档)
-- [开发指南](#开发指南)
-- [常见问题](#常见问题)
-- [贡献指南](#贡献指南)
-- [许可证](#许可证)
-
----
-
-## 🎯 项目简介
-
-qwq AIOps 是一个现代化的智能运维平台，结合了 AI 技术和传统运维工具，为企业提供：
-
-- 🤖 **AI 驱动的智能分析** - 自动分析系统异常，提供解决方案
-- 🐳 **容器化管理** - 完整的 Docker 容器生命周期管理
-- 📊 **实时监控** - 系统资源、服务状态、性能指标实时监控
-- 🔔 **智能告警** - 多渠道告警通知（钉钉、企业微信、邮件等）
-- 🚀 **一键部署** - 完整的自动化部署脚本，5 分钟快速上手
-- 🌐 **现代化界面** - 基于 Vue 3 + Element Plus 的响应式 Web 界面
-
----
-
-## ✨ 功能特性
-
-### 核心功能
-
-| 功能模块 | 描述 | 状态 |
-|---------|------|------|
-| 🎛️ **系统监控** | CPU、内存、磁盘、网络实时监控 | ✅ 已完成 |
-| 🐳 **容器管理** | Docker 容器启动、停止、重启、日志查看 | ✅ 已完成 |
-| 🌐 **网站监控** | HTTP/HTTPS 服务健康检查和响应时间监控 | ✅ 已完成 |
-| 💾 **数据库管理** | MySQL、PostgreSQL、Redis 管理 | ✅ 已完成 |
-| 📦 **应用商店** | 一键部署常用应用（WordPress、MySQL 等） | ✅ 已完成 |
-| 📁 **文件管理** | 在线文件浏览、编辑、上传下载 | ✅ 已完成 |
-| 💬 **AI 终端** | 智能命令行助手，自然语言执行运维任务 | ✅ 已完成 |
-| 📊 **可视化监控** | Prometheus + Grafana 集成 | ✅ 已完成 |
-| 🔔 **告警通知** | 钉钉、企业微信、Slack、邮件多渠道通知 | ✅ 已完成 |
-| 👥 **多租户支持** | 租户隔离、权限管理 | ✅ 已完成 |
-
-### AI 能力
-
-- **智能异常分析** - 自动分析系统日志和指标，识别潜在问题
-- **解决方案推荐** - 基于历史数据和最佳实践，提供修复建议
-- **自然语言交互** - 通过对话方式执行运维命令
-- **自动化脚本生成** - 根据需求自动生成运维脚本
-
-### 支持的 AI 服务
-
-- ✅ **OpenAI** (GPT-3.5/GPT-4)
-- ✅ **Ollama** (本地部署，完全免费)
-- ✅ **自定义 API** (兼容 OpenAI 格式)
-
----
-
-## 🏗️ 技术架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        前端层 (Vue 3)                        │
-│  Element Plus UI • Vue Router • Pinia • ECharts • Axios     │
-└─────────────────────────────────────────────────────────────┘
-                              ↓ HTTP/WebSocket
-┌─────────────────────────────────────────────────────────────┐
-│                      API 网关层 (Go)                         │
-│         路由 • 认证 • 限流 • 日志 • 错误处理                  │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                      业务逻辑层 (Go)                         │
-│  容器管理 • 监控采集 • AI 分析 • 告警推送 • 任务调度           │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                      数据存储层                              │
-│    SQLite/MySQL • Redis • Prometheus • 文件系统              │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│                      基础设施层                              │
-│         Docker • Kubernetes • Linux • 云服务商               │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 技术栈
-
-**后端**
-- Go 1.23+ - 高性能后端服务
-- Gin - Web 框架
-- GORM - ORM 框架
-- Docker SDK - 容器管理
-- Prometheus Client - 指标采集
-
-**前端**
-- Vue 3 - 渐进式前端框架
-- Element Plus - UI 组件库
-- ECharts - 数据可视化
-- Vite - 构建工具
-- Pinia - 状态管理
-
-**基础设施**
-- Docker & Docker Compose - 容器化部署
-- Prometheus - 监控数据采集
-- Grafana - 可视化面板
-- MySQL/SQLite - 数据存储
-- Redis - 缓存和队列
-
----
-
-## 🚀 快速开始
-
-### 前置要求
-
-- Docker 20.10+
-- Docker Compose V2
-- 2GB+ 可用内存
-- 10GB+ 可用磁盘空间
-
-### 一键部署
+需要 Go 1.23 或更高版本、Node.js 22 和 npm。系统巡检依赖 Linux 命令；Windows 可以构建和开发前端，运行完整巡检时请使用 Linux 环境。
 
 ```bash
-# 1. 克隆项目
 git clone https://github.com/QwQBiG/qwq-aiops.git
 cd qwq-aiops
-
-# 2. 配置环境变量
-cp .env.example .env
-nano .env  # 编辑配置文件
-
-# 3. 运行部署脚本
-chmod +x deploy.sh
-./deploy.sh
+node scripts/build.mjs
 ```
 
-部署脚本会自动完成：
-- ✅ 环境检查（Docker、端口、磁盘空间）
-- ✅ 配置验证（AI 服务、数据库等）
-- ✅ 镜像构建（前端 + 后端）
-- ✅ 服务启动（所有容器）
-- ✅ 健康检查（确保服务正常）
+构建脚本安装锁文件指定的前端依赖、生成并同步静态资源，最后输出 `bin/qwq`；Windows 输出 `bin/qwq.exe`。先构建前端再编译 Go，才能把当前页面嵌入程序。
 
-### 访问服务
-
-部署成功后，访问以下地址：
-
-| 服务 | 地址 | 默认账号 |
-|------|------|---------|
-| 🎛️ **主控制台** | http://localhost:8081 | - |
-| 📊 **Prometheus** | http://localhost:9091 | - |
-| 📈 **Grafana** | http://localhost:3000 | admin / admin |
-
----
-
-## 📦 部署指南
-
-### 方式一：Docker Compose（推荐）
-
-适合快速体验和小规模部署。
+在同一个终端中设置服务配置，然后启动。以下是 Bash 示例；[开发指南](docs/development.md)中有 PowerShell 命令。
 
 ```bash
-# 完整部署（包含所有服务）
-./deploy.sh
-
-# 快速重建（代码更新后）
-./rebuild.sh
-
-# 查看日志
-docker compose logs -f qwq
-
-# 停止服务
-docker compose down
+export OPENAI_API_KEY='your-api-key'
+export OPENAI_BASE_URL='https://api.openai.com/v1'
+export OPENAI_MODEL='your-model-name'
+export WEB_USER='operator'
+export WEB_PASSWORD='replace-with-a-long-unique-password'
+./bin/qwq web
 ```
 
-### 方式二：手动部署
+`OPENAI_BASE_URL` 应指向服务商的兼容接口，模型名称必须与该服务商一致。二进制不会自动读取 `.env`；直接运行时需要导出环境变量，或通过 `--config` 指定 JSON 配置。使用本地模型和 Docker Compose 的配置见[部署指南](docs/deployment.md)。
 
-适合自定义配置和生产环境。
+打开 <http://localhost:8080>，浏览器会请求上面设置的 HTTP Basic Auth 用户名和密码。服务默认监听 `:8080`；跨网络访问时请使用 HTTPS 和受控的网络入口。
 
 ```bash
-# 1. 构建前端
-cd frontend
-npm install
-npm run build
-
-# 2. 构建后端
-cd ..
-go mod download
-go build -o qwq ./cmd/qwq/main.go
-
-# 3. 运行服务
-./qwq web
+curl --fail http://localhost:8080/health
+curl --fail --user operator http://localhost:8080/api/health
 ```
 
-### 方式三：Kubernetes 部署
+`/health` 返回最小 JSON 存活状态，不要求登录；它不检查数据库、Docker 或外部模型是否可用。`/api/health` 是需要认证的部署诊断接口。
 
-适合大规模生产环境。
+## 使用前配置认证
 
-```bash
-# 使用 Helm Chart 部署
-helm install qwq-aiops ./charts/qwq-aiops
+`WEB_USER` 和 `WEB_PASSWORD` 必须一起设置，只设置一个会启动失败。两者都为空时，为兼容现有本地用法，服务仍允许匿名访问。请在启动服务前设置凭据，尤其不要把匿名服务暴露到公网。
 
-# 或使用 kubectl
-kubectl apply -f k8s/
+文件管理受挂载目录和禁止目录约束，但整个工作台仍具有运维权限。Docker socket、宿主机目录和终端权限只应授予可信的操作者。页面中的用户列表不能替代入口认证。
+
+## 项目目录
+
+```text
+cmd/qwq/          命令行入口和启动编排
+internal/         Web 接入、配置、监控与业务包
+frontend/         Vue 页面、路由、翻译与依赖锁文件
+scripts/          统一构建入口及历史脚本
+config/           可选基础服务配置
+docs/             当前指南；archive/ 保存历史记录
+.github/workflows/  自动化检查与构建
 ```
 
----
+目录职责、请求流程和静态资源的生成方式见[架构说明](docs/architecture.md)。
 
-## ⚙️ 配置说明
+## 文档与贡献
 
-### 环境变量配置
+| 内容 | 中文 | English |
+| --- | --- | --- |
+| 部署、配置与排障 | [部署指南](docs/deployment.md) | [Deployment](docs/deployment.en.md) |
+| 本地开发与验证 | [开发指南](docs/development.md) | [Development](docs/development.en.md) |
+| 目录职责与功能边界 | [架构说明](docs/architecture.md) | [Architecture](docs/architecture.en.md) |
+| 提交问题与修改 | [贡献指南](CONTRIBUTING.md) | [Contributing](CONTRIBUTING_EN.md) |
 
-编辑 `.env` 文件进行配置：
+旧的部署说明、实现报告和测试记录保存在[文档归档](docs/archive/README.md)。归档中的完成状态和验证结论只适用于当时的代码，请以当前源码和实际运行结果为准。
 
-```bash
-# ============================================
-# 基础配置
-# ============================================
-PORT=8080                    # 服务端口
-ENVIRONMENT=production       # 运行环境
-LOG_LEVEL=info              # 日志级别
-
-# ============================================
-# AI 配置（必须配置）
-# ============================================
-
-# 方式 1: 使用 OpenAI
-AI_PROVIDER=openai
-OPENAI_API_KEY=sk-your-api-key-here
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-3.5-turbo
-
-# 方式 2: 使用 Ollama（推荐，免费）
-AI_PROVIDER=ollama
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:7b
-
-# ============================================
-# 通知配置
-# ============================================
-DINGTALK_WEBHOOK=https://oapi.dingtalk.com/robot/send?access_token=xxx
-WECHAT_WEBHOOK=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
-SLACK_WEBHOOK=https://hooks.slack.com/services/xxx
-
-# ============================================
-# 数据库配置
-# ============================================
-DB_TYPE=sqlite              # sqlite, mysql, postgresql
-DB_PATH=./data/qwq.db      # SQLite 数据库路径
-
-# MySQL 配置（可选）
-# DB_HOST=localhost
-# DB_PORT=3306
-# DB_USER=qwq
-# DB_PASSWORD=your-password
-# DB_NAME=qwq
-
-# ============================================
-# 安全配置
-# ============================================
-JWT_SECRET=change-this-to-random-secret
-ENCRYPTION_KEY=change-this-to-32-byte-key
-
-# Web 认证（可选）
-WEB_USER=admin
-WEB_PASSWORD=admin123
-```
-
-### Docker 环境下的 Ollama 配置
-
-如果你的 Ollama 运行在 Docker 中，需要特殊配置：
-
-```bash
-# Linux 环境
-OLLAMA_HOST=http://172.17.0.1:11434  # Docker 网桥 IP
-
-# 或者使用宿主机 IP
-OLLAMA_HOST=http://你的服务器IP:11434
-
-# 或者将 Ollama 加入同一网络
-docker network connect qwqops_qwq-network ollama
-OLLAMA_HOST=http://ollama:11434
-```
-
----
-
-## 📚 使用文档
-
-### 系统监控
-
-实时查看系统资源使用情况：
-
-- **CPU 负载** - 系统负载平均值
-- **内存使用** - 已用/总内存，使用率
-- **磁盘空间** - 各分区使用情况
-- **网络连接** - TCP 连接数统计
-
-### 容器管理
-
-管理 Docker 容器：
-
-```bash
-# 在 Web 界面操作
-1. 进入"容器管理"页面
-2. 查看所有容器状态
-3. 点击"启动/停止/重启"按钮
-4. 查看容器日志
-```
-
-### AI 终端
-
-使用自然语言执行运维任务：
-
-```
-你: 查看系统负载
-AI: 执行 uptime 命令...
-    系统运行时间: 5 天 3 小时
-    负载: 0.5, 0.6, 0.7
-
-你: 重启 nginx 容器
-AI: 执行 docker restart nginx...
-    容器已重启
-```
-
-### 告警配置
-
-配置自动告警规则：
-
-1. 编辑 `.env` 文件，配置通知渠道
-2. 系统会自动监控以下指标：
-   - 磁盘使用率 > 85%
-   - 系统负载 > 4.0
-   - 内存不足（OOM）
-   - 服务异常
-3. 触发告警时自动推送通知
-
----
-
-## 🛠️ 开发指南
-
-### 本地开发环境
-
-```bash
-# 1. 启动后端（开发模式）
-go run cmd/qwq/main.go web
-
-# 2. 启动前端（开发模式）
-cd frontend
-npm run dev
-
-# 3. 访问开发服务器
-# 前端: http://localhost:5173
-# 后端: http://localhost:8080
-```
-
-### 项目结构
-
-```
-qwq-aiops/
-├── cmd/                  # 命令行入口
-│   └── qwq/
-│       └── main.go       # 主程序入口
-├── internal/             # 内部包
-│   ├── agent/            # AI 代理
-│   ├── config/           # 配置管理
-│   ├── container/        # 容器管理
-│   ├── gateway/          # API 网关
-│   ├── monitor/          # 监控采集
-│   ├── notify/           # 通知推送
-│   └── server/           # Web 服务器
-├── frontend/             # 前端项目
-│   ├── src/
-│   │   ├── views/        # 页面组件
-│   │   ├── router/       # 路由配置
-│   │   ├── i18n/         # 国际化
-│   │   └── main.js       # 入口文件
-│   └── vite.config.js    # Vite 配置
-├── config/               # 配置文件
-│   ├── prometheus.yml    # Prometheus 配置
-│   └── mysql.cnf         # MySQL 配置
-├── docs/                 # 文档
-├── docker-compose.yml    # Docker Compose 配置
-├── Dockerfile            # Docker 镜像构建
-├── deploy.sh             # 部署脚本
-├── rebuild.sh            # 重建脚本
-└── .env.example          # 环境变量示例
-```
-
-### 添加新功能
-
-1. **后端 API**
-```go
-// internal/server/server.go
-http.HandleFunc("/api/your-endpoint", basicAuth(handleYourEndpoint))
-
-func handleYourEndpoint(w http.ResponseWriter, r *http.Request) {
-    // 实现逻辑
-}
-```
-
-2. **前端页面**
-```vue
-<!-- frontend/src/views/YourPage.vue -->
-<template>
-  <div>Your Page Content</div>
-</template>
-
-<script setup>
-// 页面逻辑
-</script>
-```
-
-3. **路由配置**
-```javascript
-// frontend/src/router/index.js
-{
-  path: '/your-page',
-  name: 'YourPage',
-  component: () => import('../views/YourPage.vue')
-}
-```
-
----
-
-## ❓ 常见问题
-
-### 1. 端口被占用
-
-```bash
-# 查看端口占用
-lsof -i :8081
-
-# 修改端口
-# 编辑 docker-compose.yml，修改 ports 配置
-ports:
-  - "8082:8080"  # 改为 8082
-```
-
-### 2. AI 服务连接失败
-
-```bash
-# 检查 Ollama 是否运行
-curl http://localhost:11434/api/tags
-
-# 检查网络连接
-docker compose exec qwq ping 172.17.0.1
-
-# 查看日志
-docker compose logs qwq | grep AI
-```
-
-### 3. 前端页面空白
-
-```bash
-# 清除浏览器缓存
-Ctrl + Shift + Delete
-
-# 强制刷新
-Ctrl + F5
-
-# 检查控制台错误
-F12 -> Console
-```
-
-### 4. 容器构建失败
-
-```bash
-# 清理 Docker 缓存
-docker system prune -a
-
-# 重新构建
-./rebuild.sh
-
-# 查看构建日志
-docker compose build --no-cache --progress=plain
-```
-
-### 5. 数据库连接失败
-
-```bash
-# 检查 MySQL 容器状态
-docker compose ps mysql
-
-# 查看 MySQL 日志
-docker compose logs mysql
-
-# 重置数据库
-docker compose down -v
-docker compose up -d
-```
-
----
-
-## 🤝 贡献指南
-
-欢迎贡献代码、报告问题或提出建议！
-
-### 贡献流程
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-### 代码规范
-
-- **Go 代码** - 遵循 [Effective Go](https://golang.org/doc/effective_go)
-- **Vue 代码** - 遵循 [Vue 风格指南](https://vuejs.org/style-guide/)
-- **提交信息** - 遵循 [Conventional Commits](https://www.conventionalcommits.org/)
-
----
-
-## 📄 许可证
-
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
----
-
-## 🙏 致谢
-
-感谢以下开源项目：
-
-- [Vue.js](https://vuejs.org/) - 渐进式 JavaScript 框架
-- [Element Plus](https://element-plus.org/) - Vue 3 组件库
-- [Go](https://golang.org/) - 高效的编程语言
-- [Docker](https://www.docker.com/) - 容器化平台
-- [Prometheus](https://prometheus.io/) - 监控系统
-- [Ollama](https://ollama.ai/) - 本地 AI 模型运行时
-
----
-
-## 📞 联系方式
-
-- **问题反馈**: [GitHub Issues](https://github.com/QwQBiG/qwq-aiops/issues)
-- **功能建议**: [GitHub Discussions](https://github.com/QwQBiG/qwq-aiops/discussions)
-- **邮件**: support@qwq-aiops.com
-
----
-
-<div align="center">
-
-**[⬆ 回到顶部](#qwq-aiops---ai-驱动的智能运维平台)**
-
-Made with ❤️ by qwqBiG.
-
-</div>
+遇到问题请提交 [Issue](https://github.com/QwQBiG/qwq-aiops/issues)，附上复现步骤、运行环境和脱敏日志。

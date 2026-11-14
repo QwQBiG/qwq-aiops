@@ -7,7 +7,7 @@
 ### 新手入门
 1. **[快速开始](快速开始.md)** - 5 分钟快速部署
 2. **[部署检查清单](部署检查清单.md)** - 确保部署成功
-3. **[用户手册](docs/user-manual.md)** - 功能使用说明
+3. **[用户手册](../reports/user-manual.md)** - 功能使用说明
 
 ### 部署方式
 
@@ -73,13 +73,13 @@ curl http://localhost:8081/api/health
 
 ## 📚 文档目录
 
-- [README](README.md) - 项目介绍
+- [README](../../../README.md) - 项目介绍
 - [快速开始](快速开始.md) - 快速部署指南
 - [部署检查清单](部署检查清单.md) - 部署验证
-- [用户手册](docs/user-manual.md) - 功能说明
-- [部署指南](docs/deployment-guide.md) - 详细部署
-- [API 文档](docs/api.md) - API 接口
-- [常见问题](docs/faq.md) - FAQ
+- [用户手册](../reports/user-manual.md) - 功能说明
+- [部署指南](../reports/deployment-guide.md) - 详细部署
+- API 文档 - 历史引用的 `docs/api.md` 未随仓库提供
+- [常见问题](../reports/troubleshooting-guide.md) - FAQ
 
 ## ⚠️ 重要提示
 
@@ -110,7 +110,7 @@ OLLAMA_MODEL=qwen2.5:7b
 
 ## 🆘 需要帮助？
 
-- 📖 查看[完整文档](README.md)
+- 📖 查看[完整文档](../../../README.md)
 - 🐛 [提交 Issue](https://github.com/QwQBiG/qwq-aiops/issues)
 - 💬 [社区讨论](https://github.com/QwQBiG/qwq-aiops/discussions)
 - 📧 联系我们
