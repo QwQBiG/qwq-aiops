@@ -213,23 +213,6 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(statsCache.History)
 }
 
-// handleTrigger 手动触发巡检和状态推送
-// 异步执行，立即返回响应
-func handleTrigger(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", "POST")
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if TriggerPatrolFunc != nil { 
-		go TriggerPatrolFunc() 
-	}
-	if TriggerStatusFunc != nil { 
-		go TriggerStatusFunc() 
-	}
-	w.Write([]byte("指令已发送：正在后台执行巡检和汇报..."))
-}
-
 // WebLog 记录 Web 日志（供外部调用）
 func WebLog(msg string) {
 	logger.Info("%s", msg)

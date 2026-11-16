@@ -24,6 +24,8 @@ Preserve the browser's `Host` through a reverse proxy so writes and WebSocket co
 
 Alternatively, load a JSON file with `--config /path/to/config.json`. The `Config` struct in `internal/config/config.go` defines its fields, including `api_key`, `base_url`, `model`, `web_user`, `web_password`, `patrol_rules`, and `http_rules`. Nonempty environment variables override corresponding values. Explicit `--user`, `--password`, `--webhook`, and `--knowledge` flags take final precedence. Keep real credentials out of version control.
 
+Startup checks static validity without probing external services. Model endpoints must be HTTP(S) base URLs without embedded credentials, a query, or a fragment. HTTP rules require absolute HTTP(S) URLs and a `code` of `0` (check for `200` by default) or `100` through `599`. Custom patrol commands must be nonempty. An explicitly configured knowledge file must be readable; startup reports an error rather than continuing without the expected context.
+
 ## Run the optional gateway
 
 After setting the credentials and model endpoint above in the same terminal, you can instead run:
@@ -99,6 +101,10 @@ Configure DingTalk with `DINGTALK_WEBHOOK`, or set both `TELEGRAM_TOKEN` and `TE
 
 Status reports and the dashboard share the system metric collector. Missing commands, execution failures, or unrecognized output produce `N/A` values and a list of causes in reports. Measured `0` values remain zero. Successful delivery means the notification service accepted the message; it does not establish that every metric was available.
 
+The patrol button requests a manual patrol and status report. `202` means accepted; inspect the logs for progress and results. Repeated requests return `409` while that manual batch is running, or `503` if the service is not ready. Scheduled patrols and reports retain their own schedules.
+
+Patrols distinguish observed anomalies from incomplete checks. Missing tools, insufficient permissions, failed commands, and unrecognized output appear as failures in the logs. A custom rule should exit with status `0` and no output when there is no anomaly. Nonempty output from a successful command becomes an anomaly; a nonzero exit is a failed check. Handle an expected “no matches” result explicitly in the script.
+
 ## Check the actual behavior
 
 ```bash
@@ -117,6 +123,7 @@ Compose requires nonempty `WEB_USER` and `WEB_PASSWORD`. When running the binary
 | Symptom | First checks |
 | --- | --- |
 | Startup reports a missing key | Confirm the process environment; direct execution does not load `.env` |
+| Startup reports invalid settings or a knowledge file error | Check the named field, endpoint, status code, command, or file path. The service user must be able to read the knowledge file |
 | Login fails after setting a password | Pass both credentials, recreate the container, and check credentials cached by the browser |
 | Missing pages or placeholder assets | Run the full build and recompile Go; `npm run build` alone cannot update an existing binary |
 | Docker actions fail | Check the client, daemon address, and container user's socket permissions |

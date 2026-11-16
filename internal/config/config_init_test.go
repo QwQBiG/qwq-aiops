@@ -150,3 +150,78 @@ func TestInitRejectsUnknownProvider(t *testing.T) {
 		t.Fatalf("expected unsupported provider error, got %v", err)
 	}
 }
+
+func TestInitRejectsUnreadableKnowledge(t *testing.T) {
+	for _, directory := range []bool{false, true} {
+		t.Run(map[bool]string{false: "missing", true: "directory"}[directory], func(t *testing.T) {
+			resetRuntimeConfig(t)
+			t.Setenv("OPENAI_API_KEY", "test-key")
+			path := t.TempDir()
+			if !directory {
+				path = filepath.Join(path, "missing.txt")
+			}
+			if err := Init("", func(cfg *Config) { cfg.KnowledgeFile = path }); err == nil {
+				t.Fatal("explicit unreadable knowledge file was silently ignored")
+			}
+		})
+	}
+}
+
+func TestInitLoadsKnowledge(t *testing.T) {
+	resetRuntimeConfig(t)
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	path := filepath.Join(t.TempDir(), "knowledge.txt")
+	const content = "维护说明\nPreserve the configured service.\n"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Init("", func(cfg *Config) { cfg.KnowledgeFile = path }); err != nil {
+		t.Fatal(err)
+	}
+	if CachedKnowledge != content {
+		t.Fatal("configured knowledge was not loaded verbatim")
+	}
+}
+
+func TestInitRejectsInvalidEndpointAndRules(t *testing.T) {
+	for name, configure := range map[string]func(*Config){
+		"relative endpoint":    func(cfg *Config) { cfg.BaseURL = "not-a-url" },
+		"file endpoint":        func(cfg *Config) { cfg.BaseURL = "file:///tmp/model" },
+		"credential endpoint":  func(cfg *Config) { cfg.BaseURL = "https://operator:private-password@example.test/v1" },
+		"query endpoint":       func(cfg *Config) { cfg.BaseURL = "https://example.test/v1?token=private-token" },
+		"fragment endpoint":    func(cfg *Config) { cfg.BaseURL = "https://example.test/v1#fragment" },
+		"relative HTTP rule":   func(cfg *Config) { cfg.HTTPRules = []HTTPRule{{URL: "/health"}} },
+		"file HTTP rule":       func(cfg *Config) { cfg.HTTPRules = []HTTPRule{{URL: "file:///tmp/health"}} },
+		"invalid HTTP code":    func(cfg *Config) { cfg.HTTPRules = []HTTPRule{{URL: "http://localhost/health", Code: 600}} },
+		"negative HTTP code":   func(cfg *Config) { cfg.HTTPRules = []HTTPRule{{URL: "http://localhost/health", Code: -1}} },
+		"empty patrol command": func(cfg *Config) { cfg.PatrolRules = []PatrolRule{{Name: "empty", Command: " \n"}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			resetRuntimeConfig(t)
+			t.Setenv("OPENAI_API_KEY", "test-key")
+			err := Init("", configure)
+			if err == nil {
+				t.Fatal("invalid active configuration was accepted at startup")
+			}
+			if strings.Contains(err.Error(), "private-password") || strings.Contains(err.Error(), "private-token") {
+				t.Fatal("configuration error exposed an embedded credential")
+			}
+			if result := diagnoseRuntimeConfig(GlobalConfig); result.Status != StatusError {
+				t.Fatal("diagnostics disagreed with startup validation")
+			}
+		})
+	}
+}
+
+func TestInitAcceptsValidCheckRules(t *testing.T) {
+	resetRuntimeConfig(t)
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	err := Init("", func(cfg *Config) {
+		cfg.BaseURL = "http://localhost:11434/v1/"
+		cfg.HTTPRules = []HTTPRule{{URL: "https://operator:password@example.test/health?full=true", Code: 0}, {URL: "http://localhost/health", Code: 204}}
+		cfg.PatrolRules = []PatrolRule{{Command: "df -h"}}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

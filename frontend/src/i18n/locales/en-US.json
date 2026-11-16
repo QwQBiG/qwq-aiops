@@ -69,6 +69,7 @@
   },
   "console": {
     "patrol": "Run checks", "requestFailed": "Request failed. Check the service and try again.",
+    "patrolAccepted": "Checks requested. Follow progress and results in Logs.",
     "name": "Name", "status": "Status", "actions": "Actions", "empty": "No records",
     "saved": "Saved", "created": "Created", "deleted": "Deleted",
     "confirmDelete": "Delete {name}?", "waitingMetrics": "Waiting for system metrics…",

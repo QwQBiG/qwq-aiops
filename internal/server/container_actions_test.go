@@ -63,7 +63,10 @@ func TestContainerActionReportsExecutionError(t *testing.T) {
 
 func TestTriggerRequiresPost(t *testing.T) {
 	patrol, status := TriggerPatrolFunc, TriggerStatusFunc
-	t.Cleanup(func() { TriggerPatrolFunc, TriggerStatusFunc = patrol, status })
+	t.Cleanup(func() {
+		waitTriggerIdle(t)
+		TriggerPatrolFunc, TriggerStatusFunc = patrol, status
+	})
 	called := make(chan string, 2)
 	TriggerPatrolFunc = func() { called <- "patrol" }
 	TriggerStatusFunc = func() { called <- "status" }
@@ -74,7 +77,7 @@ func TestTriggerRequiresPost(t *testing.T) {
 	}
 	response = httptest.NewRecorder()
 	handleTrigger(response, httptest.NewRequest(http.MethodPost, "/api/trigger", nil))
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusAccepted {
 		t.Fatalf("POST returned %d", response.Code)
 	}
 	for i := 0; i < 2; i++ {
