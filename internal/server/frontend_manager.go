@@ -7,10 +7,16 @@ import (
 	"embed"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/fs"
+	"net/url"
 	fsPath "path"
 	"path/filepath"
+	"qwq/internal/deployment"
+	"slices"
 	"strings"
+
+	"golang.org/x/net/html"
 )
 
 // FrontendManager 前端资源管理器
@@ -71,12 +77,6 @@ var RequiredFiles = []string{
 	"index.html",
 }
 
-// RequiredExtensions 必需的文件扩展名（至少需要一个）
-var RequiredExtensions = map[string]string{
-	".js":  "JavaScript 文件",
-	".css": "CSS 样式文件",
-}
-
 // NewFrontendManager 创建前端资源管理器（使用 embed.FS）
 func NewFrontendManager(embedFS embed.FS, rootDir string) *FrontendManager {
 	return &FrontendManager{
@@ -128,7 +128,7 @@ func (fm *FrontendManager) ValidateResources() *ResourceValidationResult {
 	if stats.JSFiles == 0 {
 		result.Valid = false
 		result.Errors = append(result.Errors, "缺失 JavaScript 文件")
-		result.Suggestions = append(result.Suggestions, "请运行 'cd frontend && npm run build' 重新构建前端")
+		result.Suggestions = append(result.Suggestions, "Run node scripts/build.mjs to build and embed the frontend")
 	}
 
 	if stats.CSSFiles == 0 {
@@ -142,6 +142,7 @@ func (fm *FrontendManager) ValidateResources() *ResourceValidationResult {
 			result.Valid = false
 			result.Errors = append(result.Errors, fmt.Sprintf("无法读取 index.html: %v", err))
 		} else {
+			fm.validateReferencedResources(content, result)
 			// 验证 index.html 包含必要的元素
 			if !strings.Contains(string(content), "<script") {
 				result.Warnings = append(result.Warnings, "index.html 中未找到 script 标签")
@@ -153,8 +154,20 @@ func (fm *FrontendManager) ValidateResources() *ResourceValidationResult {
 	}
 
 	// 计算文件哈希
-	files, _ := fm.ListAllFiles()
+	files, walkErr := fm.ListAllFiles()
+	if walkErr != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, fmt.Sprintf("Cannot inspect frontend resources: %v", walkErr))
+	}
 	for _, file := range files {
+		if err := fm.ValidateFileIntegrity(file); err != nil {
+			result.Valid = false
+			result.Errors = append(result.Errors, err.Error())
+			if !slices.Contains(result.Stats.CorruptedFiles, file) {
+				result.Stats.CorruptedFiles = append(result.Stats.CorruptedFiles, file)
+			}
+			continue
+		}
 		hash, err := fm.GetFileHash(file)
 		if err == nil {
 			result.FileHashes[file] = hash
@@ -164,13 +177,68 @@ func (fm *FrontendManager) ValidateResources() *ResourceValidationResult {
 	// 添加修复建议
 	if !result.Valid {
 		result.Suggestions = append(result.Suggestions,
-			"1. 确保前端已正确构建: cd frontend && npm install && npm run build",
-			"2. 确保构建产物已复制到 internal/server/dist 目录",
-			"3. 重新编译 Go 程序以嵌入最新的前端资源",
+			"Run node scripts/build.mjs from the source checkout, then restart the resulting binary",
+			"For a container deployment, rebuild and recreate the console image",
 		)
 	}
 
 	return result
+}
+
+// Check local startup dependencies rather than accepting an unrelated JS file.
+func (fm *FrontendManager) validateReferencedResources(index []byte, result *ResourceValidationResult) {
+	tokens := html.NewTokenizer(strings.NewReader(string(index)))
+	for {
+		kind := tokens.Next()
+		if kind == html.ErrorToken {
+			if err := tokens.Err(); err != io.EOF {
+				result.Valid = false
+				result.Errors = append(result.Errors, fmt.Sprintf("Cannot inspect index.html: %v", err))
+			}
+			return
+		}
+		if kind != html.StartTagToken && kind != html.SelfClosingTagToken {
+			continue
+		}
+		token := tokens.Token()
+		if token.Data != "script" && token.Data != "link" {
+			continue
+		}
+		var source, relation string
+		for _, attribute := range token.Attr {
+			switch attribute.Key {
+			case "src":
+				if token.Data == "script" {
+					source = attribute.Val
+				}
+			case "href":
+				if token.Data == "link" {
+					source = attribute.Val
+				}
+			case "rel":
+				relation = strings.ToLower(attribute.Val)
+			}
+		}
+		if token.Data == "link" && relation != "stylesheet" && relation != "modulepreload" {
+			continue
+		}
+		if source == "" {
+			continue
+		}
+		reference, err := url.Parse(source)
+		if err == nil && (reference.IsAbs() || reference.Host != "") {
+			continue
+		}
+		name := source
+		if err == nil {
+			name = fsPath.Clean(strings.TrimPrefix(reference.Path, "/"))
+		}
+		if err != nil || !fs.ValidPath(name) || !fm.FileExists(name) {
+			result.Valid = false
+			result.Errors = append(result.Errors, "Missing frontend startup resource: "+name)
+			result.Stats.MissingFiles = append(result.Stats.MissingFiles, name)
+		}
+	}
 }
 
 // GetResourceStats 获取资源统计信息
@@ -231,8 +299,8 @@ func (fm *FrontendManager) getFS() fs.FS {
 // 参数 path 为相对于 rootDir 的路径
 func (fm *FrontendManager) FileExists(path string) bool {
 	fullPath := fsPath.Join(fm.rootDir, path)
-	_, err := fs.Stat(fm.getFS(), fullPath)
-	return err == nil
+	info, err := fs.Stat(fm.getFS(), fullPath)
+	return err == nil && !info.IsDir()
 }
 
 // DirExists 检查目录是否存在
@@ -404,13 +472,8 @@ func NewFrontendManagerAdapter(fm *FrontendManager) *FrontendManagerAdapter {
 }
 
 // ValidateResources 实现 deployment.FrontendValidationResult 接口
-func (a *FrontendManagerAdapter) ValidateResources() interface{} {
+func (a *FrontendManagerAdapter) ValidateResources() deployment.FrontendValidationResult {
 	return a.fm.ValidateResources()
-}
-
-// GetResourceStats 实现 deployment.FrontendManager 接口
-func (a *FrontendManagerAdapter) GetResourceStats() interface{} {
-	return a.fm.GetResourceStats()
 }
 
 // GetDefaultFrontendManagerAdapter 获取默认的前端管理器适配器

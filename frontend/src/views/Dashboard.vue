@@ -1,6 +1,9 @@
 <template>
   <section>
     <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
+    <el-alert v-if="metricErrors.length" :title="t('dashboard.metricsUnavailable')" type="warning" :closable="false" show-icon>
+      <ul><li v-for="failure in metricErrors" :key="failure.key">{{ t(`dashboard.${failure.key}`) }}: {{ failure.message }}</li></ul>
+    </el-alert>
     <el-empty v-if="!latest && !error" :description="t('console.waitingMetrics')" />
     <el-row v-if="latest" :gutter="16">
       <el-col v-for="card in cards" :key="card.key" :xs="24" :sm="12" :lg="6">
@@ -39,15 +42,22 @@ const { t } = useI18n()
 const latest = ref(null)
 const error = ref('')
 const services = computed(() => Array.isArray(latest.value?.services) ? latest.value.services : [])
-const percentage = value => Math.max(0, Math.min(100, Number.parseFloat(value) || 0))
+const metricErrors = computed(() => Object.entries(latest.value?.errors || {}).map(([key, message]) => ({ key, message })))
+const percentage = value => {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : undefined
+}
 const cards = computed(() => {
   const data = latest.value || {}
+  const unavailable = t('dashboard.unavailable')
   const memory = [data.mem_used, data.mem_total].map(value => Number.parseFloat(value) / 1024)
+  const memoryPercentage = percentage(data.mem_pct)
+  const diskPercentage = percentage(data.disk_pct)
   return [
-    { key: 'load', value: data.load?.split(',')[0] || '—', detail: t('dashboard.loadDetail') },
-    { key: 'memory', value: `${data.mem_pct || '—'}%`, detail: memory.every(Number.isFinite) ? `${memory[0].toFixed(1)} / ${memory[1].toFixed(1)} GB` : '—', percentage: percentage(data.mem_pct) },
-    { key: 'disk', value: data.disk_pct || '—', detail: t('dashboard.available', { size: data.disk_avail || '—' }), percentage: percentage(data.disk_pct) },
-    { key: 'tcp', value: data.tcp_conn || '—', detail: t('dashboard.established') }
+    { key: 'load', value: data.load?.split(',')[0] || unavailable, detail: t('dashboard.loadDetail') },
+    { key: 'memory', value: memoryPercentage === undefined ? unavailable : `${data.mem_pct}%`, detail: memory.every(Number.isFinite) ? `${memory[0].toFixed(1)} / ${memory[1].toFixed(1)} GB` : unavailable, percentage: memoryPercentage },
+    { key: 'disk', value: diskPercentage === undefined ? unavailable : data.disk_pct, detail: data.disk_avail ? t('dashboard.available', { size: data.disk_avail }) : unavailable, percentage: diskPercentage },
+    { key: 'tcp', value: data.tcp_conn || unavailable, detail: t('dashboard.established') }
   ]
 })
 const poller = createPoller(async signal => {

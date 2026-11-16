@@ -4,7 +4,7 @@
     <p class="notice">{{ t('records.authNotice') }}</p>
     <el-tabs v-model="activeTab">
       <el-tab-pane :label="t('records.users')" name="users">
-        <el-button type="primary" @click="editUser()">{{ t('records.createUser') }}</el-button>
+        <el-button type="primary" :disabled="busy || loading" @click="editUser()">{{ t('records.createUser') }}</el-button>
         <el-table :data="users" :empty-text="t('console.empty')" v-loading="loading">
           <el-table-column prop="username" :label="t('user.username')" min-width="150" />
           <el-table-column prop="email" :label="t('records.email')" min-width="180" />
@@ -12,19 +12,19 @@
           <el-table-column :label="t('console.status')" width="130"><template #default="{ row }">{{ t(row.enabled ? 'console.enabled' : 'console.disabled') }}</template></el-table-column>
           <el-table-column :label="t('console.actions')" width="270">
             <template #default="{ row }">
-              <el-button link @click="editUser(row)">{{ t('common.edit') }}</el-button>
+              <el-button link :disabled="busy || loading" @click="editUser(row)">{{ t('common.edit') }}</el-button>
               <el-tooltip :content="t('records.permissionInfo')"><span><el-button link disabled>{{ t('user.permissions') }}</el-button></span></el-tooltip>
-              <el-button link type="danger" @click="remove('users', row)">{{ t('common.delete') }}</el-button>
+              <el-button link type="danger" :disabled="busy || loading" @click="remove('users', row)">{{ t('common.delete') }}</el-button>
             </template>
           </el-table-column>
         </el-table>
       </el-tab-pane>
       <el-tab-pane :label="t('records.roles')" name="roles">
-        <el-button type="primary" @click="editRole()">{{ t('records.createRole') }}</el-button>
+        <el-button type="primary" :disabled="busy || loading" @click="editRole()">{{ t('records.createRole') }}</el-button>
         <el-table :data="roles" :empty-text="t('console.empty')" v-loading="loading">
           <el-table-column prop="name" :label="t('records.roleName')" />
           <el-table-column prop="description" :label="t('console.description')" />
-          <el-table-column :label="t('console.actions')" width="180"><template #default="{ row }"><el-button link @click="editRole(row)">{{ t('common.edit') }}</el-button><el-button link type="danger" @click="remove('roles', row)">{{ t('common.delete') }}</el-button></template></el-table-column>
+          <el-table-column :label="t('console.actions')" width="180"><template #default="{ row }"><el-button link :disabled="busy || loading" @click="editRole(row)">{{ t('common.edit') }}</el-button><el-button link type="danger" :disabled="busy || loading" @click="remove('roles', row)">{{ t('common.delete') }}</el-button></template></el-table-column>
         </el-table>
       </el-tab-pane>
       <el-tab-pane :label="t('records.permissions')" name="permissions">
@@ -32,28 +32,29 @@
         <el-table :data="permissions"><el-table-column prop="resource" :label="t('console.name')" /><el-table-column prop="action" :label="t('console.actions')" /><el-table-column prop="description" :label="t('console.description')" /></el-table>
       </el-tab-pane>
     </el-tabs>
-    <el-dialog v-model="userVisible" :title="t(userId ? 'records.editUser' : 'records.createUser')" width="520px">
-      <el-form :model="userForm" label-position="top" @submit.prevent="saveUser">
-        <el-form-item :label="t('user.username')" required><el-input v-model="userForm.username" :disabled="!!userId" /></el-form-item>
+    <el-dialog v-model="userVisible" :title="t(hasRecordId(userId) ? 'records.editUser' : 'records.createUser')" width="520px" :show-close="!saving" :close-on-click-modal="!saving" :close-on-press-escape="!saving">
+      <el-form :model="userForm" :disabled="saving" label-position="top" @submit.prevent="saveUser">
+        <el-form-item :label="t('user.username')" required><el-input v-model="userForm.username" :disabled="saving || hasRecordId(userId)" /></el-form-item>
         <el-form-item :label="t('records.email')" required><el-input v-model="userForm.email" type="email" /></el-form-item>
         <el-form-item :label="t('user.role')"><el-select v-model="userForm.roles" multiple><el-option v-for="role in roles" :key="role.id" :label="role.name" :value="role.name" /></el-select></el-form-item>
         <el-form-item :label="t('console.enabled')"><el-switch v-model="userForm.enabled" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="userVisible = false">{{ t('common.cancel') }}</el-button><el-button type="primary" :loading="saving" @click="saveUser">{{ t('common.save') }}</el-button></template>
+      <template #footer><el-button :disabled="saving" @click="userVisible = false">{{ t('common.cancel') }}</el-button><el-button type="primary" :loading="saving" @click="saveUser">{{ t('common.save') }}</el-button></template>
     </el-dialog>
-    <el-dialog v-model="roleVisible" :title="t(roleId ? 'records.editRole' : 'records.createRole')" width="520px">
-      <el-form :model="roleForm" label-position="top" @submit.prevent="saveRole">
-        <el-form-item :label="t('records.roleName')" required><el-input v-model="roleForm.name" :disabled="!!roleId" /></el-form-item>
+    <el-dialog v-model="roleVisible" :title="t(hasRecordId(roleId) ? 'records.editRole' : 'records.createRole')" width="520px" :show-close="!saving" :close-on-click-modal="!saving" :close-on-press-escape="!saving">
+      <el-form :model="roleForm" :disabled="saving" label-position="top" @submit.prevent="saveRole">
+        <el-form-item :label="t('records.roleName')" required><el-input v-model="roleForm.name" :disabled="saving || hasRecordId(roleId)" /></el-form-item>
         <el-form-item :label="t('console.description')"><el-input v-model="roleForm.description" type="textarea" /></el-form-item>
       </el-form>
       <el-alert :title="t('records.permissionInfo')" type="info" :closable="false" />
-      <template #footer><el-button @click="roleVisible = false">{{ t('common.cancel') }}</el-button><el-button type="primary" :loading="saving" @click="saveRole">{{ t('common.save') }}</el-button></template>
+      <template #footer><el-button :disabled="saving" @click="roleVisible = false">{{ t('common.cancel') }}</el-button><el-button type="primary" :loading="saving" @click="saveRole">{{ t('common.save') }}</el-button></template>
     </el-dialog>
   </section>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -61,6 +62,9 @@ import { errorMessage, isCancellation } from '../lib/errors'
 const { t } = useI18n()
 const activeTab = ref('users'), users = ref([]), roles = ref([]), permissions = ref([]), loading = ref(false), saving = ref(false)
 const userVisible = ref(false), roleVisible = ref(false), userId = ref(null), roleId = ref(null), userForm = ref({}), roleForm = ref({})
+const hasRecordId = id => id !== null && id !== undefined
+const deleting = ref(false)
+const busy = computed(() => saving.value || deleting.value)
 const controller = new AbortController()
 const options = { signal: controller.signal }
 const report = error => { if (!isCancellation(error)) ElMessage.error(errorMessage(error, t('console.requestFailed'))) }
@@ -73,19 +77,22 @@ async function load() {
   finally { loading.value = false }
 }
 function editUser(row) {
-  userId.value = row?.id || null
+  if (busy.value || loading.value) return
+  userId.value = row?.id ?? null
   userForm.value = { username: row?.username || '', email: row?.email || '', roles: [...(row?.roles || [])], enabled: row?.enabled ?? true }
   userVisible.value = true
 }
 function editRole(row) {
-  roleId.value = row?.id || null
+  if (busy.value || loading.value) return
+  roleId.value = row?.id ?? null
   roleForm.value = { name: row?.name || '', description: row?.description || '', permissions: [...(row?.permissions || [])] }
   roleVisible.value = true
 }
 async function save(kind, id, form, visible) {
+  if (busy.value || loading.value) return
   saving.value = true
   try {
-    if (id) await axios.put(`/api/${kind}/${id}`, form, options)
+    if (hasRecordId(id)) await axios.put(`/api/${kind}/${id}`, form, options)
     else await axios.post(`/api/${kind}`, form, options)
     visible.value = false
     ElMessage.success(t('console.saved'))
@@ -102,13 +109,17 @@ function saveRole() {
   return save('roles', roleId.value, roleForm.value, roleVisible)
 }
 async function remove(kind, row) {
+  if (busy.value || loading.value) return
+  deleting.value = true
   try {
     await ElMessageBox.confirm(t('console.confirmDelete', { name: row.username || row.name }), t('common.warning'), { type: 'warning', confirmButtonText: t('common.delete'), cancelButtonText: t('common.cancel') })
     await axios.delete(`/api/${kind}/${row.id}`, options)
     ElMessage.success(t('console.deleted'))
     await load()
   } catch (error) { report(error) }
+  finally { deleting.value = false }
 }
+onBeforeRouteLeave(() => !busy.value)
 onMounted(load)
 onUnmounted(() => controller.abort())
 </script>

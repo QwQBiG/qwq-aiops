@@ -397,63 +397,20 @@ func sendSystemStatusContext(ctx context.Context) error {
 	hostname := utils.GetHostname()
 
 	// 获取IP地址（多种方法尝试）
-	ip := strings.TrimSpace(utils.ExecuteShellContext(ctx, "ip route get 1 2>/dev/null | awk '{print $7; exit}' || hostname -I 2>/dev/null | awk '{print $1}' || echo 'N/A'"))
-	if ip == "" || strings.Contains(ip, "exit status") {
+	ipOutput, ipErr := utils.ExecuteShellResultContext(ctx, "ip route get 1 2>/dev/null | awk '{print $7; exit}' || hostname -I 2>/dev/null | awk '{print $1}'")
+	ip := strings.TrimSpace(ipOutput)
+	if ip == "" || ipErr != nil {
 		ip = "N/A"
 	}
 
 	// 获取运行时间
-	uptime := strings.TrimSpace(utils.ExecuteShellContext(ctx, "uptime -p 2>/dev/null || uptime | awk -F'up' '{print $2}' | awk '{print $1,$2,$3}'"))
-	if uptime == "" || strings.Contains(uptime, "exit status") {
+	uptimeOutput, uptimeErr := utils.ExecuteShellResultContext(ctx, "LC_ALL=C uptime -p")
+	uptime := strings.TrimSpace(uptimeOutput)
+	if uptime == "" || uptimeErr != nil {
 		uptime = "N/A"
 	}
-
-	// 获取内存信息
-	memInfo := strings.TrimSpace(utils.ExecuteShellContext(ctx, "free -m | awk 'NR==2{printf \"%.1f%% (已用 %sM / 总计 %sM)\", $3/$2*100, $3, $2}'"))
-	if memInfo == "" || strings.Contains(memInfo, "exit status") {
-		memInfo = "N/A"
-	}
-
-	// 获取磁盘信息（只检查根目录，过滤掉 loop 设备）
-	diskInfo := strings.TrimSpace(utils.ExecuteShellContext(ctx, "df -h / 2>/dev/null | awk 'NR==2 {print $5 \" (剩余 \" $4 \")\"}'"))
-	if diskInfo == "" || strings.Contains(diskInfo, "exit status") {
-		diskInfo = "N/A"
-	}
-
-	// 获取负载信息
-	loadInfo := strings.TrimSpace(utils.ExecuteShellContext(ctx, "uptime | awk -F'load average:' '{ print $2 }' | sed 's/^ *//'"))
-	if loadInfo == "" || strings.Contains(loadInfo, "exit status") {
-		loadInfo = "N/A"
-	}
-
-	// 获取TCP连接数（多种方法尝试）
-	tcpConn := strings.TrimSpace(utils.ExecuteShellContext(ctx, "ss -s 2>/dev/null | grep 'TCP:' | grep -oE 'estab [0-9]+' | awk '{print $2}' || netstat -ant 2>/dev/null | grep ESTABLISHED | wc -l || echo '0'"))
-	if tcpConn == "" || strings.Contains(tcpConn, "exit status") {
-		tcpConn = "0"
-	}
-
-	// 获取当前时间
-	currentTime := time.Now().Format("2006-01-02 15:04:05")
-
-	report := fmt.Sprintf(`### 📊 服务器状态日报 [%s]
-
-> **IP**: %s  
-> **运行时间**: %s  
-> **报告时间**: %s
-
----
-
-| 指标 | 状态 |
-| :--- | :--- |
-| **CPU负载** | %s |
-| **内存使用** | %s |
-| **系统磁盘** | %s |
-| **TCP连接** | %s |
-
----
-
-*qwq AIOps 自动监控*
-`, hostname, ip, uptime, currentTime, loadInfo, memInfo, diskInfo, tcpConn)
+	stats := monitor.CollectSystemStats(ctx)
+	report := formatStatusReport(hostname, ip, uptime, time.Now().Format("2006-01-02 15:04:05"), stats)
 
 	if ctx.Err() != nil {
 		return ctx.Err()

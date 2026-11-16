@@ -97,6 +97,8 @@ Configure DingTalk with `DINGTALK_WEBHOOK`, or set both `TELEGRAM_TOKEN` and `TE
 
 `status` waits for notification delivery confirmation and exits with a nonzero status if no channel is configured or delivery fails. After risk confirmation, `run` executes once, uses that attempt's output for failure diagnostics, and returns a nonzero status on failure. Suggested commands are not executed. Ctrl+C cancels the active command and diagnostic request.
 
+Status reports and the dashboard share the system metric collector. Missing commands, execution failures, or unrecognized output produce `N/A` values and a list of causes in reports. Measured `0` values remain zero. Successful delivery means the notification service accepted the message; it does not establish that every metric was available.
+
 ## Check the actual behavior
 
 ```bash
@@ -119,6 +121,7 @@ Compose requires nonempty `WEB_USER` and `WEB_PASSWORD`. When running the binary
 | Missing pages or placeholder assets | Run the full build and recompile Go; `npm run build` alone cannot update an existing binary |
 | Docker actions fail | Check the client, daemon address, and container user's socket permissions |
 | Model requests fail | Check endpoint, model name, key, and network access from the container |
+| Dashboard metrics show “Unavailable” | Read the collection error and check the required Linux tools. Container metrics describe the service's runtime environment |
 | A write returns `403` | Check credentials and `Origin`, and confirm the proxy preserves the original `Host` |
 | An API returns `404` or `501` | `404` means no such endpoint; `501` means the management capability is not connected. See [feature boundaries](architecture.en.md) |
 | File editing fails or changes format | Editing accepts regular UTF-8 text files up to 2 MiB; check process permissions. JSON and HTML are edited as raw text |

@@ -65,29 +65,35 @@ func (gs *GatewayServer) Run(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return nil
 	}
-	finished := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			gs.Stop()
-		case <-finished:
-		}
-	}()
-	err := gs.server.ListenAndServe()
-	close(finished)
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	gs.server.BaseContext = func(net.Listener) context.Context { return runCtx }
+	listener, err := net.Listen("tcp", gs.server.Addr)
 	if err != nil {
 		return fmt.Errorf("gateway listener failed: %w", err)
 	}
-	return nil
+	stopped := make(chan error, 1)
+	go func() {
+		<-runCtx.Done()
+		stopped <- gs.Stop()
+	}()
+	err = gs.server.Serve(listener)
+	cancel()
+	shutdownErr := <-stopped
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("gateway listener failed: %w", err)
+	}
+	return shutdownErr
 }
 
 func (gs *GatewayServer) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return gs.server.Shutdown(ctx)
+	err := gs.server.Shutdown(ctx)
+	if err != nil {
+		gs.server.Close()
+	}
+	return err
 }
 
 func (gs *GatewayServer) GetGateway() *Gateway { return gs.gateway }
