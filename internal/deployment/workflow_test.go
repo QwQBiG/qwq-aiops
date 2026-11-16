@@ -8,8 +8,7 @@ import (
 
 type workflowFrontend struct{}
 
-func (workflowFrontend) ValidateResources() interface{} { return nil }
-func (workflowFrontend) GetResourceStats() interface{}  { return nil }
+func (workflowFrontend) ValidateResources() FrontendValidationResult { return nil }
 
 func TestWorkflowUsesAvailableManualSteps(t *testing.T) {
 	old := config.GlobalConfig

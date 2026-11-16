@@ -80,7 +80,8 @@
     "load": "CPU 负载", "memory": "内存使用", "disk": "根目录磁盘", "tcp": "TCP 连接",
     "services": "HTTP 服务检查", "noServices": "未配置 HTTP 检查规则",
     "address": "检查地址", "latency": "响应时间", "healthy": "正常", "unhealthy": "异常",
-    "loadDetail": "最近 1 分钟平均负载，不是 CPU 使用率", "available": "可用 {size}", "established": "已建立的连接"
+    "loadDetail": "最近 1 分钟平均负载，不是 CPU 使用率", "available": "可用 {size}", "established": "已建立的连接",
+    "unavailable": "不可用", "metricsUnavailable": "部分系统指标采集失败"
   },
   "terminal": {
     "connecting": "正在连接", "connected": "已连接", "disconnected": "已断开",

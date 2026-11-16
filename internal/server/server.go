@@ -6,12 +6,10 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"qwq/internal/deployment"
 	"qwq/internal/logger"
 	"qwq/internal/monitor"
-	"qwq/internal/utils"
 	"strconv"
 	"strings"
 	"sync"
@@ -122,15 +120,9 @@ type Permission struct {
 // StatsPoint 系统监控数据点结构
 // 包含系统资源使用情况的快照数据
 type StatsPoint struct {
-	Time      string      `json:"time"`       // 数据采集时间 (HH:MM:SS 格式)
-	Load      string      `json:"load"`       // 系统负载 (1分钟,5分钟,15分钟平均值)
-	MemPct    string      `json:"mem_pct"`    // 内存使用百分比
-	MemUsed   string      `json:"mem_used"`   // 已使用内存大小 (MB)
-	MemTotal  string      `json:"mem_total"`  // 系统总内存大小 (MB)
-	DiskPct   string      `json:"disk_pct"`   // 根目录磁盘使用百分比
-	DiskAvail string      `json:"disk_avail"` // 根目录可用磁盘空间
-	TcpConn   string      `json:"tcp_conn"`   // 当前 TCP 连接数
-	Services  interface{} `json:"services"`   // HTTP 服务健康检查状态
+	Time string `json:"time"`
+	monitor.SystemStats
+	Services []monitor.CheckResult `json:"services"`
 }
 
 // DockerContainer Docker 容器信息结构
@@ -188,48 +180,10 @@ func collectStatsLoopContext(ctx context.Context) {
 // collectOnePoint 采集一次系统监控数据
 // 包括：系统负载、内存使用、磁盘使用、TCP 连接数、服务状态
 func collectOnePointContext(ctx context.Context) StatsPoint {
-	// 获取系统负载（1分钟、5分钟、15分钟平均值）
-	load := strings.TrimSpace(utils.ExecuteShellContext(ctx, "uptime | awk -F'load average:' '{ print $2 }'"))
-	
-	// 获取内存使用情况（单位：MB）
-	memRaw := utils.ExecuteShellContext(ctx, "free -m | awk 'NR==2{print $2,$3}'")
-	var memTotal, memUsed float64
-	fmt.Sscanf(memRaw, "%f %f", &memTotal, &memUsed)
-	memPct := 0.0
-	if memTotal > 0 { 
-		memPct = (memUsed / memTotal) * 100 
-	}
-	
-	// 获取根目录磁盘使用情况（仪表盘只显示根目录）
-	diskRaw := utils.ExecuteShellContext(ctx, "df -h / | awk 'NR==2 {print $5,$4}'")
-	diskParts := strings.Fields(diskRaw)
-	diskPct := "0"
-	diskAvail := "0G"
-	if len(diskParts) >= 2 {
-		diskPct = strings.TrimSuffix(diskParts[0], "%")
-		diskAvail = diskParts[1]
-	}
-	
-	// 获取 TCP 连接数（已建立的连接）
-	tcpRaw := utils.ExecuteShellContext(ctx, "ss -s | grep 'TCP:' | grep -oE 'estab [0-9]+' | awk '{print $2}'")
-	tcpConn := strings.TrimSpace(tcpRaw)
-	if tcpConn == "" { 
-		tcpConn = "0" 
-	}
-	
-	// 执行 HTTP 服务健康检查
-	httpStatus := monitor.RunChecksContext(ctx)
-	
 	return StatsPoint{
-		Time:      time.Now().Format("15:04:05"),
-		Load:      load,
-		MemPct:    fmt.Sprintf("%.1f", memPct),
-		MemUsed:   fmt.Sprintf("%.0f", memUsed),
-		MemTotal:  fmt.Sprintf("%.0f", memTotal),
-		DiskPct:   diskPct,
-		DiskAvail: diskAvail,
-		TcpConn:   tcpConn,
-		Services:  httpStatus,
+		Time:        time.Now().Format("15:04:05"),
+		SystemStats: monitor.CollectSystemStats(ctx),
+		Services:    monitor.RunChecksContext(ctx),
 	}
 }
 
@@ -376,8 +330,12 @@ func handleWebsiteDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	// 检查是否是SSL操作
-	if len(parts) >= 3 && parts[1] == "ssl" {
+	if len(parts) == 3 && parts[1] == "ssl" {
 		handleWebsiteSSL(w, r, id, parts[2])
+		return
+	}
+	if len(parts) != 1 {
+		http.NotFound(w, r)
 		return
 	}
 	
@@ -581,8 +539,12 @@ func handleUserDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	// 检查是否是权限管理操作
-	if len(parts) >= 2 && parts[1] == "permissions" {
+	if len(parts) == 2 && parts[1] == "permissions" {
 		handleUserPermissions(w, r, id)
+		return
+	}
+	if len(parts) != 1 {
+		http.NotFound(w, r)
 		return
 	}
 	
@@ -762,6 +724,10 @@ func handleRoleDetail(w http.ResponseWriter, r *http.Request) {
 	
 	if len(parts) == 0 || parts[0] == "" {
 		http.Error(w, "Role ID is required", http.StatusBadRequest)
+		return
+	}
+	if len(parts) != 1 {
+		http.NotFound(w, r)
 		return
 	}
 	

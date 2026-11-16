@@ -80,7 +80,8 @@
     "load": "CPU load", "memory": "Memory", "disk": "Root disk", "tcp": "TCP connections",
     "services": "HTTP service checks", "noServices": "No HTTP checks configured",
     "address": "Address", "latency": "Response time", "healthy": "Healthy", "unhealthy": "Unhealthy",
-    "loadDetail": "1-minute load average, not CPU utilization", "available": "{size} available", "established": "Established connections"
+    "loadDetail": "1-minute load average, not CPU utilization", "available": "{size} available", "established": "Established connections",
+    "unavailable": "Unavailable", "metricsUnavailable": "Some system metrics could not be collected"
   },
   "terminal": {
     "connecting": "Connecting", "connected": "Connected", "disconnected": "Disconnected",

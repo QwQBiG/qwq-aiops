@@ -79,6 +79,8 @@ Use `curl.exe` in Windows PowerShell to avoid older command aliases. With authen
 
 Unknown APIs should return `404`. File actions, container actions, and patrol triggers accept only `POST`. Unconnected certificate, user authorization, and runtime repair operations return `501`; verify that rejected requests preserve the original state. For terminal or polling changes, check that leaving the page or disconnecting stops requests and makes errors visible.
 
+`/api/stats` still returns an array of historical snapshots with string metric fields. Failed groups have empty fields and a cause in `errors`, keyed by `load`, `memory`, `disk`, or `tcp`. Measured zero values use numeric strings such as `"0"`. When changing the collector or dashboard, check success, failure, and zero values so missing data is not displayed as zero.
+
 For Docker changes:
 
 ```bash

@@ -3,6 +3,7 @@ package utils
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,19 +19,10 @@ func ExecuteShell(c string) string {
 }
 
 func ExecuteShellContext(parent context.Context, c string) string {
-	ctx, cancel := context.WithTimeout(parent, CommandTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "bash", "-c", c)
-	cmd.WaitDelay = time.Second
-	output := &CommandOutput{}
-	cmd.Stdout, cmd.Stderr = output, output
-	err := cmd.Run()
-	res := output.String()
-
-	if ctx.Err() == context.DeadlineExceeded {
+	res, err := executeShell(parent, c, false)
+	if errors.Is(err, context.DeadlineExceeded) {
 		res += "\n(Command timed out)"
-	} else if ctx.Err() == context.Canceled {
+	} else if errors.Is(err, context.Canceled) {
 		res += "\n(Command canceled)"
 	} else if err != nil {
 		if len(res) > 0 {
@@ -40,6 +32,31 @@ func ExecuteShellContext(parent context.Context, c string) string {
 		}
 	}
 	return res
+}
+
+// ExecuteShellResultContext keeps command failures separate from captured data.
+// A failed pipeline stage is an error even when its final command succeeds.
+func ExecuteShellResultContext(parent context.Context, c string) (string, error) {
+	return executeShell(parent, c, true)
+}
+
+func executeShell(parent context.Context, c string, pipefail bool) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, CommandTimeout)
+	defer cancel()
+
+	args := []string{"-c", c}
+	if pipefail {
+		args = []string{"-o", "pipefail", "-c", c}
+	}
+	cmd := exec.CommandContext(ctx, "bash", args...)
+	cmd.WaitDelay = time.Second
+	output := &CommandOutput{}
+	cmd.Stdout, cmd.Stderr = output, output
+	err := cmd.Run()
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	return output.String(), err
 }
 
 func CheckK8sConnection() bool {

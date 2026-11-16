@@ -42,7 +42,7 @@ Keep service implementation separate from HTTP handling, then adapt it through a
 
 | Web entry point | Behavior and dependencies |
 | --- | --- |
-| Dashboard, logs, system checks | Use commands in the service's runtime environment; complete checks require Linux tools |
+| Dashboard, logs, system checks | Use commands in the service's runtime environment; complete checks require Linux tools. Failed dashboard measurements show “Unavailable” and the cause, while measured zero values remain zero |
 | Container list and actions | Invoke Docker commands; require the client, a reachable daemon, and permissions |
 | File browsing and editing | Use `/hostfs` as the root when present, otherwise `/`; enforce path and blocked directory checks. Editing accepts regular UTF-8 text files up to 2 MiB and preserves permissions and Unix UID/GID. Closing or leaving with unsaved edits requires confirmation |
 | Terminal conversations | Call a compatible model endpoint; automatic execution permits single read-only diagnostic commands, which may still read information available to the service process |
@@ -59,6 +59,10 @@ A reverse proxy terminating HTTPS must preserve the browser's `Host`. The servic
 The built-in gateway forwards only to `127.0.0.1:WEB_UI_PORT`, preserving the original `Host` and authentication for HTTP and WebSocket requests. It does not register reserved microservices, generate unimplemented API documentation, or open a registry management port.
 
 Automatic command policy rejects pipes, redirection, command composition, and state-changing subcommands. For example, `docker ps` can run as a diagnostic, while `docker restart` requires the explicit container action. Model replies render as sanitized Markdown, and file content is served as plain text. These boundaries do not replace entry point authentication or host permissions.
+
+Resource detail handlers accept only defined complete paths. Unknown website, user, or role subpaths return `404` without updating or deleting the parent record. Pages lock inputs and closing while a save is pending, and preserve input after failed submissions.
+
+Deployment diagnostics inspect effective configuration, embedded assets, and platform information. They do not run repair templates or contact Docker, model, or notification services. Frontend checks verify that local scripts and styles referenced by the entry page exist and can be read. Verify external services through their actual workflows as well.
 
 ## How the frontend reaches the binary
 

@@ -69,3 +69,23 @@ func TestShellResultAndFailure(t *testing.T) {
 		t.Fatalf("deadline not propagated: %q", got)
 	}
 }
+
+func TestStructuredShellPreservesPipelineFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Bash system commands are verified on Linux")
+	}
+	output, err := ExecuteShellResultContext(context.Background(), "printf partial; false | cat")
+	if output != "partial" || err == nil {
+		t.Fatalf("pipeline failure was lost: output=%q err=%v", output, err)
+	}
+	output, err = ExecuteShellResultContext(context.Background(), "printf normal-result")
+	if output != "normal-result" || err != nil {
+		t.Fatalf("successful structured command failed: output=%q err=%v", output, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = ExecuteShellResultContext(ctx, "printf unused")
+	if err != context.Canceled {
+		t.Fatalf("structured cancellation was lost: %v", err)
+	}
+}
