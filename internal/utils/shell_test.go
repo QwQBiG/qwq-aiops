@@ -28,7 +28,7 @@ func TestAutomaticCommandsStayReadOnly(t *testing.T) {
 }
 
 func TestCommandOutputIsBoundedUTF8(t *testing.T) {
-	output := &commandOutput{}
+	output := &CommandOutput{}
 	data := strings.Repeat("x", 3999) + "中文" + strings.Repeat("y", 10000)
 	if n, err := output.Write([]byte(data)); n != len(data) || err != nil {
 		t.Fatalf("pipe not drained: n=%d err=%v", n, err)

@@ -8,7 +8,7 @@ qwq Ops is a Go and Vue 3 operations workbench for system status, Docker contain
 
 The Web service uses Go's standard `net/http` package. Vite builds the frontend, which is then embedded in the Go binary. Dashboard, containers, files, logs, and terminal are the main entry points.
 
-Website, user, and role pages currently maintain configuration records in memory. They lose data on restart and do not publish reverse proxies or establish permission isolation. Certificate issuance, user permission management, and runtime repair are not connected. The application store and database pages explain their integration requirements. Related business packages remain in the repository; read the [architecture and feature boundaries](docs/architecture.en.md) before using or extending them.
+Website, user, and role pages currently maintain configuration records in memory. They lose data on restart and do not publish reverse proxies or establish permission isolation. Certificate issuance, user permission management, and runtime repair are unavailable. The application store and database pages show their feature status. Read the [architecture and feature boundaries](docs/architecture.en.md) before extending them; implement the service and storage before connecting the page.
 
 ## Run from source
 
@@ -56,10 +56,9 @@ File access is constrained by its mount and blocked directories, but the workben
 
 ```text
 cmd/qwq/            CLI entry point and startup orchestration
-internal/           Web integration, configuration, monitoring, business packages
+internal/           Web service, configuration, diagnostics, notifications, execution
 frontend/           Vue views, routes, translations, dependency lockfile
 scripts/            Shared build entry point
-config/             Configuration for optional supporting services
 docs/               Current Chinese and English guides
 .github/workflows/  Automated checks and builds
 ```

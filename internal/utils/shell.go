@@ -23,7 +23,7 @@ func ExecuteShellContext(parent context.Context, c string) string {
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", c)
 	cmd.WaitDelay = time.Second
-	output := &commandOutput{}
+	output := &CommandOutput{}
 	cmd.Stdout, cmd.Stderr = output, output
 	err := cmd.Run()
 	res := output.String()

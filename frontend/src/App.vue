@@ -16,43 +16,43 @@
           class="el-menu-vertical"
           router
         >
-          <el-menu-item index="/dashboard">
+          <el-menu-item index="/dashboard" :aria-label="t('menu.dashboard')" :title="t('menu.dashboard')">
             <el-icon><Odometer /></el-icon>
             <span>{{ t('menu.dashboard') }}</span>
           </el-menu-item>
-          <el-menu-item index="/appstore">
+          <el-menu-item index="/appstore" :aria-label="t('menu.appstore')" :title="t('menu.appstore')">
             <el-icon><ShoppingCart /></el-icon>
             <span>{{ t('menu.appstore') }}</span>
           </el-menu-item>
-          <el-menu-item index="/containers">
+          <el-menu-item index="/containers" :aria-label="t('menu.containers')" :title="t('menu.containers')">
             <el-icon><Box /></el-icon>
             <span>{{ t('menu.containers') }}</span>
           </el-menu-item>
-          <el-menu-item index="/websites">
+          <el-menu-item index="/websites" :aria-label="t('menu.websites')" :title="t('menu.websites')">
             <el-icon><Monitor /></el-icon>
             <span>{{ t('menu.websites') }}</span>
           </el-menu-item>
-          <el-menu-item index="/databases">
+          <el-menu-item index="/databases" :aria-label="t('menu.databases')" :title="t('menu.databases')">
             <el-icon><Coin /></el-icon>
             <span>{{ t('menu.databases') }}</span>
           </el-menu-item>
-          <el-menu-item index="/monitoring">
+          <el-menu-item index="/monitoring" :aria-label="t('menu.monitoring')" :title="t('menu.monitoring')">
             <el-icon><DataLine /></el-icon>
             <span>{{ t('menu.monitoring') }}</span>
           </el-menu-item>
-          <el-menu-item index="/users">
+          <el-menu-item index="/users" :aria-label="t('menu.users')" :title="t('menu.users')">
             <el-icon><User /></el-icon>
             <span>{{ t('menu.users') }}</span>
           </el-menu-item>
-          <el-menu-item index="/terminal">
+          <el-menu-item index="/terminal" :aria-label="t('menu.terminal')" :title="t('menu.terminal')">
             <el-icon><ChatLineSquare /></el-icon>
             <span>{{ t('menu.terminal') }}</span>
           </el-menu-item>
-          <el-menu-item index="/files">
+          <el-menu-item index="/files" :aria-label="t('menu.files')" :title="t('menu.files')">
             <el-icon><Folder /></el-icon>
             <span>{{ t('menu.files') }}</span>
           </el-menu-item>
-          <el-menu-item index="/logs">
+          <el-menu-item index="/logs" :aria-label="t('menu.logs')" :title="t('menu.logs')">
             <el-icon><Document /></el-icon>
             <span>{{ t('menu.logs') }}</span>
           </el-menu-item>

@@ -94,17 +94,18 @@
   "files": {
     "root": "文件根目录", "newDirectory": "新建目录", "empty": "目录为空，或当前目录不可访问",
     "size": "大小", "permissions": "权限", "modified": "修改时间",
-    "invalidName": "请输入单个目录名称，不包含斜杠、反斜杠或上级目录符号。"
+    "invalidName": "请输入单个目录名称，不包含斜杠、反斜杠或上级目录符号。",
+    "unsavedChanges": "放弃尚未保存的修改吗？", "discardChanges": "放弃修改", "keepEditing": "继续编辑"
   },
   "containers": {
     "image": "镜像", "state": "容器状态", "start": "启动", "stop": "停止", "restart": "重启",
     "confirmAction": "确定对 {name} 执行“{action}”吗？"
   },
   "capabilities": {
-    "unavailable": "此入口暂不提供管理操作。可用功能和接入边界见仓库中的架构说明。",
-    "appstore": { "title": "应用安装尚未接入工作台", "description": "仓库保留了模板和部署相关代码，但当前页面没有实际的安装或卸载流程。请使用已配置的部署工具管理应用。" },
-    "databases": { "title": "数据库管理尚未接入工作台", "description": "当前页面不建立数据库连接，也不执行 SQL。连接管理、查询和备份需要先接入对应业务服务。" },
-    "monitoring": { "title": "扩展监控尚未接入工作台", "description": "仪表盘可以查看当前系统指标和 HTTP 检查结果。告警规则、历史监控与可选监控服务尚未接入此页面。" }
+    "unavailable": "扩展这些功能需要实现对应服务与存储。当前可用功能见仓库中的架构说明。",
+    "appstore": { "title": "暂不提供应用安装", "description": "工作台不提供应用安装或卸载流程。请使用已配置的部署工具管理应用。" },
+    "databases": { "title": "暂不提供数据库管理", "description": "工作台不建立数据库连接、执行 SQL 或管理备份。" },
+    "monitoring": { "title": "暂不提供扩展监控", "description": "仪表盘可以查看当前系统指标和 HTTP 检查结果，尚未提供告警规则与历史监控。" }
   },
   "records": {
     "memoryNotice": "这些记录仅保存在当前进程内存中，服务重启后会丢失。",

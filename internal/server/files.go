@@ -320,11 +320,13 @@ func handleFileAction(w http.ResponseWriter, r *http.Request) {
 // 防止写入过程中系统崩溃导致的文件损坏
 // 参数：filename - 目标文件路径，data - 要写入的数据，perm - 文件权限
 func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
+	var originalInfo os.FileInfo
 	if info, err := os.Stat(filename); err == nil {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("only regular files can be saved")
 		}
 		perm = info.Mode().Perm()
+		originalInfo = info
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -343,6 +345,12 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 	if _, err := tmpFile.Write(data); err != nil {
 		tmpFile.Close()
 		return err
+	}
+	if originalInfo != nil {
+		if err := preserveFileOwner(tmpFile, originalInfo); err != nil {
+			tmpFile.Close()
+			return err
+		}
 	}
 	if err := tmpFile.Chmod(perm.Perm()); err != nil {
 		tmpFile.Close()

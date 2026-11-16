@@ -53,6 +53,16 @@ var Tools = []openai.Tool{
 
 func GetQuickCommand(input string) string {
 	input = strings.ToLower(strings.TrimSpace(input))
+	// Content requests must reach the model even when their subject is a metric
+	// or container. Shortcuts are only useful for direct diagnostic queries.
+	if strings.Contains(input, "生成") || strings.Contains(input, "写一个") || strings.Contains(input, "写个") {
+		return ""
+	}
+	for _, word := range strings.Fields(input) {
+		if word == "write" || word == "generate" || word == "create" {
+			return ""
+		}
+	}
 	if strings.Contains(input, "qwq") || strings.Contains(input, "ops") {
 		if strings.Contains(input, "镜像") {
 			return "docker images | grep qwq"
@@ -98,7 +108,7 @@ func CheckStaticResponse(input string) string {
 	input = strings.ToLower(strings.TrimSpace(input))
 	
 	// 1. 身份/版本类
-	if input == "你好" || input == "你是谁" || input == "版本" || input == "version" || input == "whoami" || strings.Contains(input, "介绍") {
+	if input == "你好" || input == "你是谁" || input == "版本" || input == "version" || input == "whoami" || input == "介绍" || input == "介绍一下自己" {
 		return fmt.Sprintf(`**qwq Ops %s**
 --------------------------------
 我可以查询服务进程所在机器的系统状态，并协助整理配置示例。
@@ -206,12 +216,14 @@ func ProcessAgentStepForWebContext(ctx context.Context, msgs *[]openai.ChatCompl
 	})
 	
 	if err != nil {
-		logCallback(fmt.Sprintf("API Error: %v", err))
-		return openai.ChatCompletionMessage{}, false
+		return openai.ChatCompletionMessage{
+			Role: openai.ChatMessageRoleAssistant, Content: "Model request failed: " + err.Error(),
+		}, false
 	}
 	if len(resp.Choices) == 0 {
-		logCallback("Model response contained no choices")
-		return openai.ChatCompletionMessage{}, false
+		return openai.ChatCompletionMessage{
+			Role: openai.ChatMessageRoleAssistant, Content: "Model request failed: response contained no choices",
+		}, false
 	}
 	msg := resp.Choices[0].Message
 	*msgs = append(*msgs, msg)

@@ -15,8 +15,40 @@ func resetRuntimeConfig(t *testing.T) {
 	for _, key := range []string{
 		"OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL", "AI_PROVIDER",
 		"OLLAMA_HOST", "OLLAMA_MODEL", "WEB_USER", "WEB_PASSWORD", "DINGTALK_WEBHOOK",
+		"TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID",
 	} {
 		t.Setenv(key, "")
+	}
+}
+
+func TestInitAppliesExplicitOverridesBeforeValidation(t *testing.T) {
+	resetRuntimeConfig(t)
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("WEB_USER", "environment-user")
+	if err := Init("", func(cfg *Config) {
+		cfg.WebUser = "flag-user"
+		cfg.WebPassword = "flag-password"
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if GlobalConfig.WebUser != "flag-user" || GlobalConfig.WebPassword != "flag-password" {
+		t.Fatal("explicit credentials did not override environment")
+	}
+}
+
+func TestInitTelegramEnvironment(t *testing.T) {
+	resetRuntimeConfig(t)
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("TELEGRAM_TOKEN", "test-token")
+	if err := Init(""); err == nil || !strings.Contains(err.Error(), "configured together") {
+		t.Fatalf("incomplete Telegram credentials accepted: %v", err)
+	}
+	t.Setenv("TELEGRAM_CHAT_ID", "test-chat")
+	if err := Init(""); err != nil {
+		t.Fatal(err)
+	}
+	if GlobalConfig.TelegramToken != "test-token" || GlobalConfig.TelegramChatID != "test-chat" {
+		t.Fatal("Telegram environment was not applied")
 	}
 }
 

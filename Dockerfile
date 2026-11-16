@@ -32,7 +32,7 @@ COPY --from=frontend-builder /app/internal/server/dist ./internal/server/dist
 # 编译 Go 程序
 ARG TARGETARCH
 RUN GOARCH=${TARGETARCH:-amd64} go build \
-    -ldflags="-w -s -X main.Version=1.0.0" \
+    -trimpath -ldflags="-w -s" \
     -o qwq \
     ./cmd/qwq
 
@@ -42,12 +42,9 @@ RUN chmod +x qwq && ls -lh qwq
 # --- Stage 3: Final Runtime Image ---
 FROM alpine:3.24
 
-LABEL maintainer="qwq AIOps Team" \
-      version="1.0.0" \
-      description="qwq AIOps - AI-Powered Intelligent Operations Platform" \
+LABEL description="qwq Ops workbench" \
       org.opencontainers.image.source="https://github.com/QwQBiG/qwq-aiops" \
-      org.opencontainers.image.documentation="https://github.com/QwQBiG/qwq-aiops/blob/main/README.md" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.documentation="https://github.com/QwQBiG/qwq-aiops/blob/main/README.md"
 
 WORKDIR /app
 

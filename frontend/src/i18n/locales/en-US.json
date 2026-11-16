@@ -94,17 +94,18 @@
   "files": {
     "root": "File root", "newDirectory": "New directory", "empty": "This directory is empty or unavailable",
     "size": "Size", "permissions": "Permissions", "modified": "Modified",
-    "invalidName": "Enter one directory name without slashes, backslashes or parent-directory markers."
+    "invalidName": "Enter one directory name without slashes, backslashes or parent-directory markers.",
+    "unsavedChanges": "Discard unsaved changes?", "discardChanges": "Discard changes", "keepEditing": "Keep editing"
   },
   "containers": {
     "image": "Image", "state": "Container state", "start": "Start", "stop": "Stop", "restart": "Restart",
     "confirmAction": "{action} {name}?"
   },
   "capabilities": {
-    "unavailable": "Management actions are unavailable here. See the repository's architecture guide for current capabilities and integration limits.",
-    "appstore": { "title": "Application installation is not connected", "description": "Template and deployment code remains in the repository, but this page has no working install or uninstall flow. Manage applications with your configured deployment tools." },
-    "databases": { "title": "Database management is not connected", "description": "This page does not open database connections or execute SQL. Connection management, queries and backups require the corresponding services to be integrated first." },
-    "monitoring": { "title": "Extended monitoring is not connected", "description": "The dashboard shows current system metrics and HTTP check results. Alert rules, monitoring history and optional monitoring services are not connected to this page." }
+    "unavailable": "These features require service and storage implementations. See the repository's architecture guide for the current capabilities.",
+    "appstore": { "title": "Application installation is unavailable", "description": "This console does not install or uninstall applications. Manage applications with your configured deployment tools." },
+    "databases": { "title": "Database management is unavailable", "description": "This console does not open database connections, execute SQL or manage backups." },
+    "monitoring": { "title": "Extended monitoring is unavailable", "description": "The dashboard shows current system metrics and HTTP check results. Alert rules and monitoring history are not provided." }
   },
   "records": {
     "memoryNotice": "These records live in process memory and disappear when the service restarts.",

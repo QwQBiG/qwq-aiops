@@ -17,7 +17,68 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  smoke:
+    name: Test Container Runtime
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Validate Compose configuration
+        env:
+          WEB_USER: smoke-user
+          WEB_PASSWORD: smoke-password
+        run: |
+          docker compose config --quiet
+          if WEB_PASSWORD= docker compose config --quiet; then
+            echo 'Compose accepted missing credentials'
+            exit 1
+          fi
+
+      - name: Build runtime test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: qwq-smoke:local
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify startup, authentication, assets, and shutdown
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'docker logs qwq-smoke; docker rm -f qwq-smoke >/dev/null' EXIT
+          docker run --detach --name qwq-smoke --publish 127.0.0.1::8080 \
+            --env OPENAI_API_KEY=smoke --env OPENAI_BASE_URL=http://127.0.0.1:9/v1 \
+            --env OPENAI_MODEL=smoke --env WEB_USER=smoke-user \
+            --env WEB_PASSWORD=smoke-password qwq-smoke:local
+          address="http://$(docker port qwq-smoke 8080/tcp)"
+          ready=false
+          for attempt in {1..30}; do
+            if curl --silent --fail "$address/health"; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = true
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' "$address/api/health")" = 401
+          curl --silent --fail --user smoke-user:smoke-password "$address/api/health" >/dev/null
+          curl --silent --fail --user smoke-user:smoke-password "$address/" > /tmp/qwq-index.html
+          asset=$(sed -n 's/.*src="\([^"]*\/assets\/[^\"]*\.js\)".*/\1/p' /tmp/qwq-index.html | head -1)
+          test -n "$asset"
+          curl --silent --fail --user smoke-user:smoke-password "$address$asset" >/dev/null
+          docker exec qwq-smoke sh -c 'test "$(id -u)" -ne 0 && test -s /app/logs/qwq.log'
+          docker stop --time 15 qwq-smoke
+          test "$(docker inspect --format '{{.State.ExitCode}}' qwq-smoke)" = 0
+
   build-and-push:
+    needs: smoke
     runs-on: ubuntu-latest
     permissions:
       contents: read
