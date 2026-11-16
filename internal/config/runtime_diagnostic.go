@@ -1,7 +1,6 @@
 package config
 
 import (
-	"net/url"
 	"os"
 	"time"
 )
@@ -20,11 +19,8 @@ func diagnoseRuntimeConfig(cfg Config) *DiagnosticResult {
 	if cfg.ApiKey == "" {
 		addError("The active model endpoint requires a credential")
 	}
-	if cfg.BaseURL != "" {
-		u, err := url.Parse(cfg.BaseURL)
-		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil {
-			addError("The active model endpoint must be an HTTP or HTTPS URL without embedded credentials")
-		}
+	for _, description := range activeConfigurationErrors(cfg) {
+		addError(description)
 	}
 	if port := os.Getenv("PORT"); port != "" && !validatePort(port) {
 		addError("PORT must be a number between 1 and 65535")

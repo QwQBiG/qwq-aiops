@@ -12,7 +12,7 @@
           active-text-color="#409EFF"
           background-color="#10141d"
           text-color="#a1a7b7"
-          :default-active="$route.path"
+          :default-active="activeMenuPath"
           class="el-menu-vertical"
           router
         >
@@ -113,11 +113,12 @@ const patrolLoading = ref(false)
 
 // 当前语言显示文本
 const currentLocale = computed(() => locale.value === 'zh-CN' ? '中文' : 'English')
+const activeMenuPath = computed(() => route.matched.at(-1)?.path || '/dashboard')
 
 // 根据当前路由动态生成页面标题
 const pageTitle = computed(() => {
   if (route.name === 'NotFound') return t('console.notFound')
-  const path = route.path.substring(1) || 'dashboard'
+  const path = activeMenuPath.value.substring(1)
   return t(`menu.${path}`)
 })
 
@@ -134,10 +135,11 @@ const handleLocaleChange = (lang) => {
 
 // 触发系统巡检
 const triggerPatrol = async () => {
+  if (patrolLoading.value) return
   patrolLoading.value = true
   try {
     await axios.post('/api/trigger')
-    ElMessage.success(t('common.success'))
+    ElMessage.info(t('console.patrolAccepted'))
   } catch (e) {
     ElMessage.error(errorMessage(e, t('console.requestFailed')))
   } finally {

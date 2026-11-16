@@ -105,14 +105,18 @@ func Init(configPath string, overrides ...func(*Config)) error {
 	if GlobalConfig.ApiKey == "" {
 		return errors.New("critical: 未找到 API Key")
 	}
+	if failures := activeConfigurationErrors(GlobalConfig); len(failures) > 0 {
+		return errors.New(strings.Join(failures, "; "))
+	}
 
 	// 加载知识库
 	if GlobalConfig.KnowledgeFile != "" {
 		content, err := os.ReadFile(GlobalConfig.KnowledgeFile)
-		if err == nil {
-			CachedKnowledge = string(content)
-			fmt.Printf("📚 已加载知识库: %s (%d bytes)\n", GlobalConfig.KnowledgeFile, len(content))
+		if err != nil {
+			return fmt.Errorf("knowledge_file: %w", err)
 		}
+		CachedKnowledge = string(content)
+		fmt.Printf("📚 已加载知识库: %s (%d bytes)\n", GlobalConfig.KnowledgeFile, len(content))
 	}
 
 	return nil

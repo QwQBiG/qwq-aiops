@@ -69,6 +69,7 @@
   },
   "console": {
     "patrol": "运行巡检", "requestFailed": "请求失败，请检查服务状态后重试。",
+    "patrolAccepted": "巡检请求已受理，请在系统日志查看进度和结果。",
     "name": "名称", "status": "状态", "actions": "操作", "empty": "暂无记录",
     "saved": "已保存", "created": "已创建", "deleted": "已删除",
     "confirmDelete": "确定删除 {name} 吗？", "waitingMetrics": "等待系统指标……",

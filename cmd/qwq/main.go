@@ -18,7 +18,6 @@ import (
 	"qwq/internal/server"
 	"qwq/internal/utils"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -290,72 +289,8 @@ func performPatrolContext(ctx context.Context) {
 		return
 	}
 	logger.Info("正在执行系统巡检...")
-	var anomalies []string
-
-	// 磁盘检查：在代码中解析和过滤，确保可靠过滤 loop、snap 等设备
-	diskOut := utils.ExecuteShellContext(ctx, "df -h")
-	diskLines := strings.Split(diskOut, "\n")
-	var diskAlerts []string
-
-	for _, line := range diskLines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "Filesystem") {
-			continue
-		}
-
-		// 严格过滤：检查设备名和挂载点
-		fields := strings.Fields(line)
-		if len(fields) < 5 {
-			continue
-		}
-
-		device := fields[0]
-		mountPoint := fields[len(fields)-1]
-
-		// 过滤所有 loop 设备、snap 相关、虚拟文件系统
-		if strings.Contains(device, "/dev/loop") ||
-			strings.Contains(device, "loop") ||
-			strings.Contains(mountPoint, "/snap") ||
-			strings.Contains(mountPoint, "snap/") ||
-			strings.Contains(mountPoint, "/hostfs") ||
-			strings.Contains(line, "tmpfs") ||
-			strings.Contains(line, "overlay") ||
-			strings.Contains(line, "cdrom") ||
-			strings.Contains(line, "efivarfs") {
-			continue
-		}
-
-		// 解析使用率
-		useStr := strings.TrimSuffix(fields[4], "%")
-		usePct, err := strconv.Atoi(useStr)
-		if err == nil && usePct > 85 {
-			diskAlerts = append(diskAlerts, line)
-		}
-	}
-
-	if len(diskAlerts) > 0 {
-		anomalies = append(anomalies, "**磁盘告警**:\n```\n"+strings.Join(diskAlerts, "\n")+"\n```")
-	}
-	if out := utils.ExecuteShellContext(ctx, "uptime | awk -F'load average:' '{ print $2 }' | awk '{ if ($1 > 4.0) print $0 }'"); strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
-		anomalies = append(anomalies, "**高负载**:\n```\n"+strings.TrimSpace(out)+"\n```")
-	}
-	dmesgOut := utils.ExecuteShellContext(ctx, "dmesg | grep -i 'out of memory' | tail -n 5")
-	if !strings.Contains(dmesgOut, "Operation not permitted") && !strings.Contains(dmesgOut, "不允许的操作") && strings.TrimSpace(dmesgOut) != "" && !strings.Contains(dmesgOut, "exit status") {
-		anomalies = append(anomalies, "**OOM日志**:\n```\n"+strings.TrimSpace(dmesgOut)+"\n```")
-	}
-	rawZombies := utils.ExecuteShellContext(ctx, "ps -A -o stat,ppid,pid,cmd | awk '$1 ~ /^[Zz]/'")
-	if strings.TrimSpace(rawZombies) != "" && !strings.Contains(rawZombies, "exit status") {
-		detailZombie := "STAT    PPID     PID CMD\n" + rawZombies
-		anomalies = append(anomalies, "**僵尸进程**:\n```\n"+strings.TrimSpace(detailZombie)+"\n```")
-	}
-
-	for _, rule := range config.GlobalConfig.PatrolRules {
-		out := utils.ExecuteShellContext(ctx, rule.Command)
-		if strings.TrimSpace(out) != "" && !strings.Contains(out, "exit status") {
-			logger.Info("⚠️ 触发自定义规则: %s", rule.Name)
-			anomalies = append(anomalies, fmt.Sprintf("**%s**:\n```\n%s\n```", rule.Name, strings.TrimSpace(out)))
-		}
-	}
+	checks := collectPatrolChecks(ctx, config.GlobalConfig.PatrolRules, utils.ExecuteShellResultContext)
+	anomalies := checks.anomalies
 
 	httpResults := monitor.RunChecksContext(ctx)
 	for _, res := range httpResults {
@@ -368,9 +303,16 @@ func performPatrolContext(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+	if len(checks.failures) > 0 {
+		logger.Info("巡检有未完成的检查:\n%s", strings.Join(checks.failures, "\n"))
+	}
 	if len(anomalies) > 0 {
 		report := strings.Join(anomalies, "\n")
-		logger.Info("🚨 发现异常，正在请求 AI 分析...")
+		if len(checks.failures) > 0 {
+			report += "\n\n**未完成的检查**:\n" + strings.Join(checks.failures, "\n")
+		}
+		logger.Info("巡检发现异常:\n%s", report)
+		logger.Info("正在请求处理建议...")
 		analysis := agent.AnalyzeWithAIContext(ctx, report)
 		alertMsg := fmt.Sprintf("🚨 **系统告警** [%s]\n\n%s\n\n💡 **处理建议**:\n%s", utils.GetHostname(), report, analysis)
 		if err := notify.SendContext(ctx, "系统告警", alertMsg); err != nil {
@@ -378,8 +320,10 @@ func performPatrolContext(ctx context.Context) {
 		} else {
 			logger.Info("告警已推送")
 		}
+	} else if len(checks.failures) == 0 {
+		logger.Info("巡检已完成，未发现异常")
 	} else {
-		logger.Info("✔ 系统健康")
+		logger.Info("巡检不完整，无法确认系统健康；请查看检查失败原因")
 	}
 }
 
