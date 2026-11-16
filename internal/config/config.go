@@ -42,7 +42,8 @@ var (
 	CachedKnowledge string
 )
 
-func Init(configPath string) error {
+// Init applies file values, nonempty environment variables, then explicit overrides.
+func Init(configPath string, overrides ...func(*Config)) error {
 	if configPath != "" {
 		if err := loadFromFile(configPath); err != nil {
 			return fmt.Errorf("加载配置文件失败: %v", err)
@@ -62,16 +63,18 @@ func Init(configPath string) error {
 	if webhook := os.Getenv("DINGTALK_WEBHOOK"); webhook != "" {
 		GlobalConfig.DingTalkWebhook = webhook
 	}
+	if token := os.Getenv("TELEGRAM_TOKEN"); token != "" {
+		GlobalConfig.TelegramToken = token
+	}
+	if chatID := os.Getenv("TELEGRAM_CHAT_ID"); chatID != "" {
+		GlobalConfig.TelegramChatID = chatID
+	}
 	if user := os.Getenv("WEB_USER"); user != "" {
 		GlobalConfig.WebUser = user
 	}
 	if password := os.Getenv("WEB_PASSWORD"); password != "" {
 		GlobalConfig.WebPassword = password
 	}
-	if (GlobalConfig.WebUser == "") != (GlobalConfig.WebPassword == "") {
-		return errors.New("WEB_USER and WEB_PASSWORD must be configured together")
-	}
-
 	switch provider := os.Getenv("AI_PROVIDER"); provider {
 	case "", "openai":
 	case "ollama":
@@ -87,6 +90,15 @@ func Init(configPath string) error {
 		}
 	default:
 		return fmt.Errorf("unsupported provider: %q", provider)
+	}
+	for _, override := range overrides {
+		override(&GlobalConfig)
+	}
+	if (GlobalConfig.WebUser == "") != (GlobalConfig.WebPassword == "") {
+		return errors.New("WEB_USER and WEB_PASSWORD must be configured together")
+	}
+	if (GlobalConfig.TelegramToken == "") != (GlobalConfig.TelegramChatID == "") {
+		return errors.New("TELEGRAM_TOKEN and TELEGRAM_CHAT_ID must be configured together")
 	}
 
 	// The client requires a key; local Ollama uses a placeholder.

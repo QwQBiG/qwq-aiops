@@ -36,7 +36,7 @@
         <el-table-column prop="mod_time" :label="t('files.modified')" width="180" />
         <el-table-column :label="t('console.actions')" width="150" fixed="right">
           <template #default="scope">
-            <el-button v-if="!scope.row.is_dir" link type="primary" @click.stop="editFile(scope.row)">{{ t('common.edit') }}</el-button>
+            <el-button v-if="!scope.row.is_dir" link type="primary" :disabled="loading || !!readingPath" @click.stop="editFile(scope.row)">{{ t('common.edit') }}</el-button>
             <el-button link type="danger" @click.stop="deleteFile(scope.row)">{{ t('common.delete') }}</el-button>
           </template>
         </el-table-column>
@@ -44,17 +44,18 @@
     </el-card>
 
     <!-- 编辑器弹窗 -->
-    <el-dialog v-model="showEditor" :title="t('common.edit') + ': ' + currentFile" width="70%" top="5vh">
+    <el-dialog v-model="showEditor" :title="t('common.edit') + ': ' + currentFile" width="70%" top="5vh" :before-close="closeEditor" :show-close="!saving" :close-on-click-modal="!saving" :close-on-press-escape="!saving">
       <el-input
         v-model="fileContent"
         type="textarea"
         :rows="20"
         class="code-editor"
         spellcheck="false"
+        :disabled="saving"
       />
       <template #footer>
         <span class="dialog-footer">
-          <el-button @click="showEditor = false">{{ t('common.cancel') }}</el-button>
+          <el-button :disabled="saving" @click="closeEditor()">{{ t('common.cancel') }}</el-button>
           <el-button type="primary" @click="saveFile" :loading="saving">{{ t('common.save') }}</el-button>
         </span>
       </template>
@@ -72,7 +73,8 @@
 
 <script setup>
 // 文件管理视图组件 - 提供文件浏览、编辑、删除和目录管理功能
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
@@ -90,6 +92,35 @@ const currentFile = ref('')          // 当前编辑的文件路径
 const fileContent = ref('')          // 文件内容
 const saving = ref(false)            // 保存状态
 const newDirName = ref('')           // 新建目录名称
+const originalContent = ref('')
+const readingPath = ref('')
+const lifetime = new AbortController()
+let listController, fileController
+const dirty = computed(() => showEditor.value && fileContent.value !== originalContent.value)
+
+async function confirmDiscard() {
+  if (saving.value) return false
+  if (!dirty.value) return true
+  try {
+    await ElMessageBox.confirm(t('files.unsavedChanges'), t('common.warning'), {
+      confirmButtonText: t('files.discardChanges'), cancelButtonText: t('files.keepEditing'), type: 'warning'
+    })
+    return true
+  } catch { return false }
+}
+
+async function closeEditor(done) {
+  if (!await confirmDiscard()) return
+  showEditor.value = false
+  if (typeof done === 'function') done()
+}
+
+function beforeUnload(event) {
+  if (!dirty.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+onBeforeRouteLeave(confirmDiscard)
 
 // 将当前路径分割为面包屑导航数组
 const pathParts = computed(() => {
@@ -112,23 +143,24 @@ const formatSize = (bytes) => {
 
 // 加载指定路径的文件列表
 const loadFiles = async (path) => {
+  listController?.abort()
+  fileController?.abort()
+  const request = listController = new AbortController()
   loading.value = true
   try {
-    const res = await axios.get(`/api/files/list?path=${encodeURIComponent(path)}`)
+    const res = await axios.get('/api/files/list', { params: { path }, signal: request.signal })
+    if (listController !== request || request.signal.aborted) return
     if (res.data.code === 200) {
       // 确保返回的数据是数组格式，避免 reduce 错误
       files.value = Array.isArray(res.data.data.files) ? res.data.data.files : []
       currentPath.value = res.data.data.path
     } else {
       ElMessage.error(res.data.msg)
-      files.value = []
     }
   } catch (e) {
-    ElMessage.error(errorMessage(e, t('console.requestFailed')))
-    // 出错时设置为空数组，避免渲染错误
-    files.value = []
+    if (!isCancellation(e)) ElMessage.error(errorMessage(e, t('console.requestFailed')))
   } finally {
-    loading.value = false
+    if (listController === request) loading.value = false
   }
 }
 
@@ -146,27 +178,35 @@ const refresh = () => loadFiles(currentPath.value)
 // 编辑文件 - 读取文件内容并打开编辑器
 const editFile = async (row) => {
   const filePath = currentPath.value === '/' ? '/' + row.name : currentPath.value + '/' + row.name
+  fileController?.abort()
+  const request = fileController = new AbortController()
+  readingPath.value = filePath
   try {
-    fileContent.value = await readFileText(filePath)
+    const content = await readFileText(filePath, { signal: request.signal })
+    if (request !== fileController || request.signal.aborted) return
+    fileContent.value = originalContent.value = content
     currentFile.value = filePath
     showEditor.value = true
   } catch (e) {
-    ElMessage.error(errorMessage(e, t('console.requestFailed')))
+    if (!isCancellation(e)) ElMessage.error(errorMessage(e, t('console.requestFailed')))
+  } finally {
+    if (fileController === request) readingPath.value = ''
   }
 }
 
 // 保存文件内容
 const saveFile = async () => {
+  if (saving.value) return
   saving.value = true
   try {
     await axios.post('/api/files/save', {
       path: currentFile.value,
       content: fileContent.value
-    })
+    }, { signal: lifetime.signal })
     ElMessage.success(t('console.saved'))
     showEditor.value = false
   } catch (e) {
-    ElMessage.error(errorMessage(e, t('console.requestFailed')))
+    if (!isCancellation(e)) ElMessage.error(errorMessage(e, t('console.requestFailed')))
   } finally {
     saving.value = false
   }
@@ -174,13 +214,13 @@ const saveFile = async () => {
 
 // 删除文件或目录 - 需要用户确认
 const deleteFile = (row) => {
+  const filePath = currentPath.value === '/' ? '/' + row.name : currentPath.value + '/' + row.name
   ElMessageBox.confirm(t('console.confirmDelete', { name: row.name }), t('common.warning'), {
     confirmButtonText: t('common.delete'),
     cancelButtonText: t('common.cancel'),
     type: 'warning',
   }).then(async () => {
-    const filePath = currentPath.value === '/' ? '/' + row.name : currentPath.value + '/' + row.name
-    await axios.post(`/api/files/action?type=delete&path=${encodeURIComponent(filePath)}`)
+    await axios.post(`/api/files/action?type=delete&path=${encodeURIComponent(filePath)}`, null, { signal: lifetime.signal })
     ElMessage.success(t('console.deleted'))
     refresh()
   }).catch(error => {
@@ -199,18 +239,27 @@ const createDir = async () => {
   }
   const newPath = currentPath.value === '/' ? '/' + name : currentPath.value + '/' + name
   try {
-    await axios.post(`/api/files/action?type=mkdir&path=${encodeURIComponent(newPath)}`)
+    await axios.post(`/api/files/action?type=mkdir&path=${encodeURIComponent(newPath)}`, null, { signal: lifetime.signal })
     ElMessage.success(t('console.created'))
     showMkdir.value = false
     newDirName.value = ''
     refresh()
   } catch (e) {
-    ElMessage.error(errorMessage(e, t('console.requestFailed')))
+    if (!isCancellation(e)) ElMessage.error(errorMessage(e, t('console.requestFailed')))
   }
 }
 
 // 组件挂载时加载根目录
-onMounted(() => loadFiles('/'))
+onMounted(() => {
+  window.addEventListener('beforeunload', beforeUnload)
+  loadFiles('/')
+})
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', beforeUnload)
+  listController?.abort()
+  fileController?.abort()
+  lifetime.abort()
+})
 </script>
 
 <style scoped>

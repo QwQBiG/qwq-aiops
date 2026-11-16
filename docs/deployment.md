@@ -22,7 +22,7 @@ export PORT='8080'
 
 反向代理需要保留浏览器的 `Host`，以便写请求和 WebSocket 通过来源检查。外域或非法 `Origin` 会返回 `403`；服务不使用 `X-Forwarded-Host` 等转发头代替原始 `Host`。
 
-也可以用 `--config /path/to/config.json` 加载 JSON。配置字段以 `internal/config/config.go` 中的 `Config` 为准，例如 `api_key`、`base_url`、`model`、`web_user`、`web_password`、`patrol_rules` 和 `http_rules`。环境变量会覆盖对应字段；请勿将真实凭据提交到仓库。
+也可以用 `--config /path/to/config.json` 加载 JSON。配置字段以 `internal/config/config.go` 中的 `Config` 为准，例如 `api_key`、`base_url`、`model`、`web_user`、`web_password`、`patrol_rules` 和 `http_rules`。非空环境变量覆盖对应字段；明确传入的 `--user`、`--password`、`--webhook`、`--knowledge` 最后生效。请勿将真实凭据提交到仓库。
 
 ## 运行可选网关
 
@@ -80,11 +80,22 @@ docker compose logs --tail 100 qwq
 curl --fail http://localhost:8081/health
 ```
 
-访问 <http://localhost:8081>。默认只启动工作台，服务端口绑定宿主机的 `127.0.0.1`。MySQL、Redis 和监控服务分别放在 `database`、`cache`、`monitoring` profile 中；例如 `docker compose --profile monitoring up -d` 会额外启动 Prometheus 和 Grafana。开放辅助服务的端口前，请先配置各自的访问控制。启动数据库服务不会自动把内存中的网站、用户和角色数据改成持久化数据。
+访问 <http://localhost:8081>。Compose 只管理工作台，服务端口绑定宿主机的 `127.0.0.1`，日志写入挂载的 `logs` 目录。网站、用户和角色记录仍在内存中，重启会丢失。
 
-启用 `database` 前设置 `MYSQL_ROOT_PASSWORD` 和 `MYSQL_PASSWORD`，启用 `monitoring` 前设置 `GRAFANA_ADMIN_PASSWORD`。当前 Prometheus 配置只抓取自身指标；启动这些容器不会自动接入工作台指标或生成 Grafana 面板。
+旧版的 `database`、`cache`、`monitoring` profiles 及配套模板已移除，它们没有被当前工作台使用。升级不会主动删除已有辅助容器或数据卷；仍需使用这些服务时，请用单独的 Compose 文件管理并保留原卷。未接入的旧业务草稿可从 Git 历史查阅。
 
-镜像以非 root 用户运行。宿主机挂载的 `data`、`logs`、`backups` 目录需要允许该用户写入；Docker 操作还要求容器用户能访问守护进程。请按实际用户和组配置权限，不要为了消除报错开放整个宿主机目录。将 Docker socket 挂载为 `:ro` 也不能限制 Docker API 的修改操作。
+镜像以 UID/GID `1000:1000` 的非 root 用户运行。宿主机挂载的 `logs` 目录需要允许该用户写入；Docker 操作还要求容器用户能访问守护进程。请按实际用户和组配置权限，不要为了消除报错开放整个宿主机目录。将 Docker socket 挂载为 `:ro` 也不能限制 Docker API 的修改操作。
+
+## 巡检通知与单次命令
+
+通知可以配置钉钉 `DINGTALK_WEBHOOK`，或成对设置 `TELEGRAM_TOKEN`、`TELEGRAM_CHAT_ID`；JSON 中对应 `webhook`、`telegram_token`、`telegram_chat_id`。Compose 模板会传入这些变量。两种渠道都配置时都会发送，任一失败会返回错误，不会自动重试。
+
+```bash
+./bin/qwq status
+./bin/qwq run 'printf "done\n"'
+```
+
+`status` 等待通知服务确认发送，未配置渠道或发送失败时以非零状态退出。`run` 在风险确认后执行一次，失败时使用该次输出请求诊断并返回非零状态；建议命令不会自动执行。按 Ctrl+C 会取消正在执行的命令及诊断请求。
 
 ## 确认服务实际可用
 
@@ -113,4 +124,4 @@ Compose 要求 `WEB_USER`、`WEB_PASSWORD` 均为非空。直接运行二进制�
 | 文件保存失败或格式异常 | 编辑限 2 MiB 的 UTF-8 普通文本；检查进程权限，JSON 和 HTML 均按原始文本编辑 |
 | 数据在重启后消失 | 查看[功能边界](architecture.md)，确认该接口是否仍使用进程内存 |
 
-源码方式运行时查看工作目录中的 `qwq.log`；容器方式先查看 `docker compose logs`。排障时保留原始数据和日志，确认原因后再处理，不需要先清空卷或全局构建缓存。
+源码方式运行时查看工作目录中的 `logs/qwq.log`；容器方式可查看同一挂载路径或 `docker compose logs`。旧版工作目录根部的 `qwq.log` 保留原样，新日志改写到 `logs`。排障时保留原始数据和日志，确认原因后再处理，不需要先清空卷或全局构建缓存。

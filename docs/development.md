@@ -75,7 +75,7 @@ curl --include http://localhost:8080/api/health
 curl --fail --user operator http://localhost:8080/api/health
 ```
 
-Windows PowerShell 请使用 `curl.exe`，避免旧版本中的命令别名。启用认证后，第二条请求应返回 `401`；第三条会提示输入密码。打开页面并确认至少一个静态资源请求成功，随后查看 `qwq.log`。存活检查不调用 Docker 或模型，相关功能需要另走一次实际操作。
+Windows PowerShell 请使用 `curl.exe`，避免旧版本中的命令别名。启用认证后，第二条请求应返回 `401`；第三条会提示输入密码。打开页面并确认至少一个静态资源请求成功，随后查看 `logs/qwq.log`。存活检查不调用 Docker 或模型，相关功能需要另走一次实际操作。
 
 未知 API 应返回 `404`。文件、容器操作与巡检触发只接受 `POST`；未接通的证书、用户授权和运行时修复操作返回 `501`。验证这些接口时，应确认拒绝请求没有修改原数据。终端和轮询改动还需检查离开页面或断开连接后，请求是否停止、错误是否可见。
 
@@ -92,7 +92,7 @@ docker compose logs --tail 100 qwq
 
 ## 持续集成检查什么
 
-`.github/workflows/build.yml` 在 Ubuntu 上准备 Go 与 Node.js 构建工具，执行前端测试和真实资源构建，再运行整个 Go 模块的竞态检查与覆盖率测试。后续二进制构建复用这份前端资源，交叉编译时关闭 CGO。镜像流程位于 `docker-publish.yml`；前端和 Go 编译使用 runner 原生架构，Go 按目标架构交叉编译，运行镜像保持对应架构。PR 构建不推送镜像。
+`.github/workflows/build.yml` 在 Ubuntu 上准备 Go 与 Node.js 构建工具，执行前端测试和真实资源构建，再运行整个 Go 模块的竞态检查与覆盖率测试。后续二进制构建复用这份前端资源，交叉编译时关闭 CGO。镜像流程位于 `docker-publish.yml`，先启动 amd64 容器检查认证、页面资源、日志权限与正常退出，再构建多架构镜像。前端和 Go 编译使用 runner 原生架构，Go 按目标架构交叉编译，运行镜像保持对应架构。PR 构建不推送镜像。
 
 这些是工作流配置，不代表任意提交都已经通过。提交 PR 后，查看本次提交对应的检查结果；失败时根据原始日志定位，不通过排除失败包来宣布整个模块已通过。
 

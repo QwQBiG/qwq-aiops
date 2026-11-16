@@ -75,7 +75,7 @@ curl --include http://localhost:8080/api/health
 curl --fail --user operator http://localhost:8080/api/health
 ```
 
-Use `curl.exe` in Windows PowerShell to avoid older command aliases. With authentication enabled, the second request should return `401`; the third prompts for a password. Open the page, confirm that at least one static asset loads, then inspect `qwq.log`. Liveness does not exercise Docker or model requests; test those features separately.
+Use `curl.exe` in Windows PowerShell to avoid older command aliases. With authentication enabled, the second request should return `401`; the third prompts for a password. Open the page, confirm that at least one static asset loads, then inspect `logs/qwq.log`. Liveness does not exercise Docker or model requests; test those features separately.
 
 Unknown APIs should return `404`. File actions, container actions, and patrol triggers accept only `POST`. Unconnected certificate, user authorization, and runtime repair operations return `501`; verify that rejected requests preserve the original state. For terminal or polling changes, check that leaving the page or disconnecting stops requests and makes errors visible.
 
@@ -92,7 +92,7 @@ Complete the [deployment configuration](deployment.en.md) first. If Docker is un
 
 ## What continuous integration checks
 
-`.github/workflows/build.yml` prepares Go and Node.js on Ubuntu, runs frontend tests and builds real assets, then runs race detection and coverage tests for the entire Go module. Binary jobs reuse those assets and disable CGO for cross compilation. In `docker-publish.yml`, frontend and Go build tools run on the runner's native architecture. Go cross-compiles for each target, while runtime images retain their target architecture. PR builds do not push images.
+`.github/workflows/build.yml` prepares Go and Node.js on Ubuntu, runs frontend tests and builds real assets, then runs race detection and coverage tests for the entire Go module. Binary jobs reuse those assets and disable CGO for cross compilation. `docker-publish.yml` first starts an amd64 container to check authentication, page assets, log permissions, and graceful shutdown before building multiple architectures. Frontend and Go build tools run on the runner's native architecture. Go cross-compiles for each target, while runtime images retain their target architecture. PR builds do not push images.
 
 This describes the workflow configuration, not the outcome for every commit. Inspect checks for the actual PR commit. Use original failure logs to locate problems rather than excluding failing packages and claiming the complete module passed.
 

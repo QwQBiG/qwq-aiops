@@ -7,15 +7,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"qwq/internal/logger"
+	"strings"
 	"time"
 )
 
 // DingTalkNotificationService 钉钉通知服务实现
 // 封装钉钉机器人 API 调用，提供消息发送和配置验证功能
 type DingTalkNotificationService struct {
-	webhookURL string      // 钉钉机器人 Webhook URL
+	webhookURL string       // 钉钉机器人 Webhook URL
 	httpClient *http.Client // HTTP 客户端，用于发送请求
 }
 
@@ -34,7 +36,7 @@ func NewDingTalkNotificationService(webhookURL string) *DingTalkNotificationServ
 // DingTalkMessage 钉钉消息结构
 // 支持文本和 Markdown 两种消息格式，可选择 @ 特定用户
 type DingTalkMessage struct {
-	MsgType  string            `json:"msgtype"`           // 消息类型：text 或 markdown
+	MsgType  string            `json:"msgtype"`            // 消息类型：text 或 markdown
 	Markdown *DingTalkMarkdown `json:"markdown,omitempty"` // Markdown 消息内容（可选）
 	Text     *DingTalkText     `json:"text,omitempty"`     // 文本消息内容（可选）
 	At       *DingTalkAt       `json:"at,omitempty"`       // @ 用户配置（可选）
@@ -65,6 +67,10 @@ type DingTalkAt struct {
 // 参数：title - 告警标题，content - 告警内容（支持 Markdown 语法）
 // 返回：发送成功返回 nil，失败返回错误信息
 func (d *DingTalkNotificationService) SendAlert(title, content string) error {
+	return d.SendAlertContext(context.Background(), title, content)
+}
+
+func (d *DingTalkNotificationService) SendAlertContext(ctx context.Context, title, content string) error {
 	if d.webhookURL == "" {
 		return fmt.Errorf("钉钉 Webhook URL 未配置")
 	}
@@ -78,7 +84,7 @@ func (d *DingTalkNotificationService) SendAlert(title, content string) error {
 		},
 	}
 
-	return d.sendMessage(message)
+	return d.sendMessageContext(ctx, message)
 }
 
 // SendStatusReport 发送系统状态报告
@@ -88,9 +94,9 @@ func (d *DingTalkNotificationService) SendAlert(title, content string) error {
 func (d *DingTalkNotificationService) SendStatusReport(report string) error {
 	title := "系统状态报告"
 	// 格式化报告内容，添加标题、内容和时间戳
-	content := fmt.Sprintf("## %s\n\n%s\n\n> 报告时间: %s", 
+	content := fmt.Sprintf("## %s\n\n%s\n\n> 报告时间: %s",
 		title, report, time.Now().Format("2006-01-02 15:04:05"))
-	
+
 	return d.SendAlert(title, content)
 }
 
@@ -118,7 +124,7 @@ func (d *DingTalkNotificationService) ValidateConfig() error {
 	}
 
 	// 简单的 URL 格式验证，确保包含钉钉域名
-	if len(d.webhookURL) < 10 || !contains(d.webhookURL, "dingtalk.com") {
+	if len(d.webhookURL) < 10 || !strings.Contains(d.webhookURL, "dingtalk.com") {
 		return fmt.Errorf("钉钉 Webhook URL 格式不正确")
 	}
 
@@ -130,6 +136,10 @@ func (d *DingTalkNotificationService) ValidateConfig() error {
 // 参数：message - 要发送的钉钉消息结构体
 // 返回：发送成功返回 nil，失败返回错误信息
 func (d *DingTalkNotificationService) sendMessage(message *DingTalkMessage) error {
+	return d.sendMessageContext(context.Background(), message)
+}
+
+func (d *DingTalkNotificationService) sendMessageContext(parent context.Context, message *DingTalkMessage) error {
 	// 将消息结构体序列化为 JSON
 	jsonData, err := json.Marshal(message)
 	if err != nil {
@@ -137,13 +147,13 @@ func (d *DingTalkNotificationService) sendMessage(message *DingTalkMessage) erro
 	}
 
 	// 创建带超时的上下文，防止请求长时间阻塞
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 
 	// 创建 HTTP POST 请求
 	req, err := http.NewRequestWithContext(ctx, "POST", d.webhookURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("创建请求失败: %v", err)
+		return notificationRequestError(err)
 	}
 
 	// 设置请求头，指定内容类型为 JSON
@@ -152,8 +162,7 @@ func (d *DingTalkNotificationService) sendMessage(message *DingTalkMessage) erro
 	// 发送 HTTP 请求
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		logger.Info("❌ 钉钉发送失败: %v", err)
-		return fmt.Errorf("发送请求失败: %v", err)
+		return notificationRequestError(err)
 	}
 	defer resp.Body.Close()
 
@@ -161,33 +170,20 @@ func (d *DingTalkNotificationService) sendMessage(message *DingTalkMessage) erro
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("钉钉服务器返回错误状态码: %d", resp.StatusCode)
 	}
+	var result struct {
+		Code    *int   `json:"errcode"`
+		Message string `json:"errmsg"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&result); err != nil {
+		return fmt.Errorf("invalid DingTalk response: %w", err)
+	}
+	if result.Code == nil {
+		return fmt.Errorf("invalid DingTalk response: missing errcode")
+	}
+	if *result.Code != 0 {
+		return fmt.Errorf("DingTalk rejected notification (%d): %s", *result.Code, result.Message)
+	}
 
 	logger.Info("✅ 钉钉消息发送成功")
 	return nil
-}
-
-// contains 检查字符串是否包含子字符串
-// 自定义实现的字符串包含检查，避免引入额外依赖
-// 参数：s - 主字符串，substr - 要查找的子字符串
-// 返回：包含返回 true，不包含返回 false
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && 
-		   (s == substr || 
-		    (len(s) > len(substr) && 
-		     (s[:len(substr)] == substr || 
-		      s[len(s)-len(substr):] == substr || 
-		      indexOf(s, substr) >= 0)))
-}
-
-// indexOf 查找子字符串在主字符串中的位置
-// 返回子字符串第一次出现的索引位置，未找到返回 -1
-// 参数：s - 主字符串，substr - 要查找的子字符串
-// 返回：找到返回索引位置，未找到返回 -1
-func indexOf(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
 }

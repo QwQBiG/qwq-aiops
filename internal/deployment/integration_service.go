@@ -263,7 +263,7 @@ func (is *IntegrationService) validateNotificationService() ComponentStatus {
 		Suggestions: []string{},
 	}
 
-	if config.GlobalConfig.DingTalkWebhook == "" {
+	if config.GlobalConfig.DingTalkWebhook == "" && config.GlobalConfig.TelegramToken == "" && config.GlobalConfig.TelegramChatID == "" {
 		status.Suggestions = append(status.Suggestions, "Notifications are optional and currently disabled")
 		return status
 	}
@@ -406,22 +406,22 @@ func (is *IntegrationService) GetDeploymentWorkflow() map[string]interface{} {
 		repairSteps := []map[string]interface{}{
 			{
 				"step":        1,
-				"title":       "自动修复配置问题",
-				"description": "运行自动修复器修复常见的配置和前端资源问题",
-				"command":     "RunAutomaticRepair",
-				"automated":   true,
+				"title":       "检查生效配置",
+				"description": "按诊断建议检查环境变量、配置文件和启动参数，然后重新启动程序",
+				"command":     "manual",
+				"automated":   false,
 			},
 			{
 				"step":        2,
-				"title":       "验证修复结果",
-				"description": "重新验证所有组件状态",
-				"command":     "RunComprehensiveValidation",
-				"automated":   true,
+				"title":       "重新构建并部署",
+				"description": "前端资源缺失时，从源码运行 node scripts/build.mjs，再重启生成的程序；镜像部署则重新构建并启动镜像",
+				"command":     "manual",
+				"automated":   false,
 			},
 			{
 				"step":        3,
-				"title":       "手动处理剩余问题",
-				"description": "根据建议手动处理无法自动修复的问题",
+				"title":       "重新验证部署",
+				"description": "重新请求 /api/deployment/status，按部署指南处理仍然存在的问题",
 				"command":     "manual",
 				"automated":   false,
 			},

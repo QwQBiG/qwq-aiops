@@ -27,18 +27,16 @@ The entry point loads configuration, initializes logging and the model client, t
 | `internal/agent`, `executor`, `security` | Conversations, command execution, and risk checks |
 | `internal/monitor`, `notify`, `logger`, `utils` | System checks, notifications, logging, and low level utilities |
 | `internal/gateway` | Optional console reverse proxy, authentication, and deterministic routing |
-| `internal/registry` | Independent service discovery library; the console and gateway do not start its management server |
-| Other `internal` business packages | Container deployment, databases, websites, backup, clusters, and related services |
+| `internal/deployment`, `platform` | Diagnostics for effective configuration, embedded assets, and runtime environment |
 | `frontend/src/views` | Pages loaded directly by the router |
 | `frontend/src/components` | Shared interface components such as feature status notices |
 | `frontend/src/lib` | Error messages, polling, terminal sessions, and safe content rendering |
 | `frontend/src/i18n` | Chinese and English interface text |
 | `scripts` | Shared build entry point |
-| `config` | Configuration for optional Prometheus, MySQL, and other supporting services |
 | `docs` | Current Chinese and English guides |
 | `.github/workflows` | Tests, binary builds, and container builds |
 
-Implement new behavior in the relevant business package, then adapt it through a Web handler that validates input and returns an accurate response. A package's presence does not mean the `web` command uses it. A menu entry does not establish that its service is connected.
+Keep service implementation separate from HTTP handling, then adapt it through a handler that validates input and returns an accurate response. For features with data, define storage and restart behavior first. A menu's feature status does not replace a service implementation.
 
 ## Current feature boundaries
 
@@ -46,12 +44,11 @@ Implement new behavior in the relevant business package, then adapt it through a
 | --- | --- |
 | Dashboard, logs, system checks | Use commands in the service's runtime environment; complete checks require Linux tools |
 | Container list and actions | Invoke Docker commands; require the client, a reachable daemon, and permissions |
-| File browsing and editing | Use `/hostfs` as the root when present, otherwise `/`; enforce path and blocked directory checks. Editing accepts regular UTF-8 text files up to 2 MiB and preserves existing file permissions |
+| File browsing and editing | Use `/hostfs` as the root when present, otherwise `/`; enforce path and blocked directory checks. Editing accepts regular UTF-8 text files up to 2 MiB and preserves permissions and Unix UID/GID. Closing or leaving with unsaved edits requires confirmation |
 | Terminal conversations | Call a compatible model endpoint; automatic execution permits single read-only diagnostic commands, which may still read information available to the service process |
 | Websites, users, roles | Maintain configuration records in memory and lose them on restart; do not publish reverse proxies or establish user authorization. Certificate issuance, renewal, and user permission requests return `501` |
 | Application store and database pages | Describe current integration requirements; management writes return `501` rather than claiming deployment or connection success |
 | Runtime repair | `/api/deployment/repair` returns `501`; operators change configuration and rebuild assets through the deployment workflow |
-| Backup, clusters, extended monitoring | Independent packages exist; inspect each entry point and its tests before use |
 
 Web entry points share HTTP Basic Auth. The user management page and entry point credentials are separate mechanisms. Persistent permissions, multiple authenticated users, and tenant isolation require further authentication and storage integration.
 
@@ -59,7 +56,7 @@ State changes use write requests: `/api/container/action`, `/api/files/action`, 
 
 A reverse proxy terminating HTTPS must preserve the browser's `Host`. The service accepts `http` and `https` origins and does not reconstruct them from forwarding headers. Rewriting `Host` can cause valid browser writes to be rejected.
 
-The built-in gateway forwards only to `127.0.0.1:WEB_UI_PORT`, preserving the original `Host` and authentication for HTTP and WebSocket requests. It does not register reserved microservices, generate unimplemented API documentation, or open a registry management port. The separate registry library binds its HTTP management server only to loopback.
+The built-in gateway forwards only to `127.0.0.1:WEB_UI_PORT`, preserving the original `Host` and authentication for HTTP and WebSocket requests. It does not register reserved microservices, generate unimplemented API documentation, or open a registry management port.
 
 Automatic command policy rejects pipes, redirection, command composition, and state-changing subcommands. For example, `docker ps` can run as a diagnostic, while `docker restart` requires the explicit container action. Model replies render as sanitized Markdown, and file content is served as plain text. These boundaries do not replace entry point authentication or host permissions.
 

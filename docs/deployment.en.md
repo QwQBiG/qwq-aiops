@@ -22,7 +22,7 @@ The binary does not read `.env`. Variables must be present in the process enviro
 
 Preserve the browser's `Host` through a reverse proxy so writes and WebSocket connections pass origin checks. Foreign or invalid `Origin` values return `403`. The service does not substitute forwarding headers such as `X-Forwarded-Host` for the original `Host`.
 
-Alternatively, load a JSON file with `--config /path/to/config.json`. The `Config` struct in `internal/config/config.go` defines its fields, including `api_key`, `base_url`, `model`, `web_user`, `web_password`, `patrol_rules`, and `http_rules`. Environment variables override corresponding values. Keep real credentials out of version control.
+Alternatively, load a JSON file with `--config /path/to/config.json`. The `Config` struct in `internal/config/config.go` defines its fields, including `api_key`, `base_url`, `model`, `web_user`, `web_password`, `patrol_rules`, and `http_rules`. Nonempty environment variables override corresponding values. Explicit `--user`, `--password`, `--webhook`, and `--knowledge` flags take final precedence. Keep real credentials out of version control.
 
 ## Run the optional gateway
 
@@ -80,11 +80,22 @@ docker compose logs --tail 100 qwq
 curl --fail http://localhost:8081/health
 ```
 
-Open <http://localhost:8081>. Only the workbench starts by default, and service ports bind to the host's `127.0.0.1`. MySQL, Redis, and monitoring services use the `database`, `cache`, and `monitoring` profiles. For example, `docker compose --profile monitoring up -d` also starts Prometheus and Grafana. Configure access controls before exposing supporting services. Starting a database does not make in-memory website, user, or role data persistent.
+Open <http://localhost:8081>. Compose manages only the workbench, binds its port to the host's `127.0.0.1`, and writes logs to the mounted `logs` directory. Website, user, and role records remain in memory and are lost on restart.
 
-Set `MYSQL_ROOT_PASSWORD` and `MYSQL_PASSWORD` before enabling `database`, and `GRAFANA_ADMIN_PASSWORD` before enabling `monitoring`. The current Prometheus configuration scrapes only its own metrics. Starting these containers does not connect workbench metrics or provision Grafana dashboards.
+The old `database`, `cache`, and `monitoring` profiles and templates have been removed because the current workbench did not use them. Updating does not delete existing supporting containers or volumes. If you still need them, manage them with a separate Compose file and preserve their volumes. Unconnected business drafts remain available in Git history.
 
-The image runs as a non-root user. Mounted `data`, `logs`, and `backups` directories must permit that user to write. Docker actions also require daemon access. Configure actual user and group permissions rather than opening access to the entire host. Mounting the Docker socket with `:ro` does not restrict mutating Docker API calls.
+The image runs as a non-root user with UID/GID `1000:1000`. The mounted `logs` directory must permit that user to write. Docker actions also require daemon access. Configure actual user and group permissions rather than opening access to the entire host. Mounting the Docker socket with `:ro` does not restrict mutating Docker API calls.
+
+## Notifications and one-shot commands
+
+Configure DingTalk with `DINGTALK_WEBHOOK`, or set both `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID`. The JSON fields are `webhook`, `telegram_token`, and `telegram_chat_id`. The Compose template passes these variables through. When both channels are configured, both receive the message; any failure returns an error. Sends are not retried automatically.
+
+```bash
+./bin/qwq status
+./bin/qwq run 'printf "done\n"'
+```
+
+`status` waits for notification delivery confirmation and exits with a nonzero status if no channel is configured or delivery fails. After risk confirmation, `run` executes once, uses that attempt's output for failure diagnostics, and returns a nonzero status on failure. Suggested commands are not executed. Ctrl+C cancels the active command and diagnostic request.
 
 ## Check the actual behavior
 
@@ -113,4 +124,4 @@ Compose requires nonempty `WEB_USER` and `WEB_PASSWORD`. When running the binary
 | File editing fails or changes format | Editing accepts regular UTF-8 text files up to 2 MiB; check process permissions. JSON and HTML are edited as raw text |
 | Data disappears after restart | Check the [feature boundaries](architecture.en.md) for in-memory endpoints |
 
-For source runs, inspect `qwq.log` in the working directory. For containers, start with `docker compose logs`. Preserve data and logs while investigating; clearing volumes or global build caches is not a prerequisite for diagnosis.
+For source runs, inspect `logs/qwq.log` in the working directory. Containers use the same mounted path and `docker compose logs`. Existing root-level `qwq.log` files remain untouched; new logs go to `logs`. Preserve data and logs while investigating; clearing volumes or global build caches is not a prerequisite for diagnosis.
