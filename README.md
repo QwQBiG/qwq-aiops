@@ -75,3 +75,7 @@ docs/             当前中英文操作与架构指南
 | 提交问题与修改 | [贡献指南](CONTRIBUTING.md) | [Contributing](CONTRIBUTING_EN.md) |
 
 遇到问题请提交 [Issue](https://github.com/QwQBiG/qwq-aiops/issues)，附上复现步骤、运行环境和脱敏日志。
+
+## 许可证
+
+本项目采用 Apache License 2.0。第三方依赖适用各自的许可证。 [许可证全文](LICENSE)

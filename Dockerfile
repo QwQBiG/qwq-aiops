@@ -44,7 +44,8 @@ FROM alpine:3.24
 
 LABEL description="qwq Ops workbench" \
       org.opencontainers.image.source="https://github.com/QwQBiG/qwq-aiops" \
-      org.opencontainers.image.documentation="https://github.com/QwQBiG/qwq-aiops/blob/main/README.md"
+      org.opencontainers.image.documentation="https://github.com/QwQBiG/qwq-aiops/blob/main/README.md" \
+      org.opencontainers.image.licenses="Apache-2.0"
 
 WORKDIR /app
 
@@ -99,6 +100,7 @@ RUN addgroup -g 1000 qwq && \
 
 # 复制编译好的二进制文件
 COPY --from=backend-builder --chown=qwq:qwq /app/qwq /app/qwq
+COPY LICENSE /app/LICENSE
 
 # 切换到非 root 用户
 USER qwq
