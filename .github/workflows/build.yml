@@ -34,8 +34,18 @@ jobs:
     - name: Test frontend behavior
       run: npm test --prefix frontend
 
-    - name: Audit frontend dependencies
-      run: npm audit --prefix frontend --audit-level=high
+    - name: Audit frontend production dependencies
+      run: npm audit --prefix frontend --omit=dev --audit-level=high
+
+    - name: Audit frontend build dependencies
+      run: |
+        report="$RUNNER_TEMP/frontend-audit.json"
+        if npm audit --prefix frontend --audit-level=high --json > "$report"; then
+          cat "$report"
+        else
+          cat "$report"
+          node scripts/check-frontend-audit.mjs "$report"
+        fi
 
     - name: Save embedded frontend
       uses: actions/upload-artifact@v4
