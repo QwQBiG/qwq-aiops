@@ -74,6 +74,8 @@ jobs:
           test -n "$asset"
           curl --silent --fail --user smoke-user:smoke-password "$address$asset" >/dev/null
           docker exec qwq-smoke sh -c 'test "$(id -u)" -ne 0 && test -s /app/logs/qwq.log'
+          test "$(docker inspect --format '{{index .Config.Labels "org.opencontainers.image.licenses"}}' qwq-smoke)" = Apache-2.0
+          docker exec qwq-smoke cat /app/LICENSE | cmp - LICENSE
           docker stop --time 15 qwq-smoke
           test "$(docker inspect --format '{{.State.ExitCode}}' qwq-smoke)" = 0
 

@@ -75,3 +75,7 @@ See [architecture](docs/architecture.en.md) for package responsibilities, reques
 | Reporting issues and proposing changes | [贡献指南](CONTRIBUTING.md) | [Contributing](CONTRIBUTING_EN.md) |
 
 Report problems through [Issues](https://github.com/QwQBiG/qwq-aiops/issues), including reproduction steps, your environment, and logs with secrets removed.
+
+## License
+
+This project is licensed under the Apache License 2.0. Third-party dependencies retain their own licenses. [Full license text](LICENSE)
