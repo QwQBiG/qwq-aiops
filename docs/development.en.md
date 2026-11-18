@@ -98,6 +98,8 @@ Complete the [deployment configuration](deployment.en.md) first. If Docker is un
 
 This describes the workflow configuration, not the outcome for every commit. Inspect checks for the actual PR commit. Use original failure logs to locate problems rather than excluding failing packages and claiming the complete module passed.
 
+CI audits frontend production dependencies and the full dependency tree separately. Until a compatible fix ships, the full audit allows this `picomatch` advisory only through development dependencies and retains it in the report. Other high or critical findings still fail the check. [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
+
 Use `scripts/build.mjs` for builds and the root Compose configuration for deployment.
 
 ## Files and contributions

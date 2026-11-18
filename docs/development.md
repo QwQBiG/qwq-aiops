@@ -98,6 +98,8 @@ docker compose logs --tail 100 qwq
 
 这些是工作流配置，不代表任意提交都已经通过。提交 PR 后，查看本次提交对应的检查结果；失败时根据原始日志定位，不通过排除失败包来宣布整个模块已通过。
 
+CI 分别审计前端生产依赖和完整依赖树。兼容修复版本发布前，完整审计只允许 `picomatch` 的这条公告沿纯开发依赖链出现，并保留报告。其他高危或严重问题仍会使检查失败。 [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
+
 当前构建使用 `scripts/build.mjs`，部署使用仓库根目录的 Compose 配置。
 
 ## 文件与提交约定
