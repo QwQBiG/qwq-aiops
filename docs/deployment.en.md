@@ -26,6 +26,8 @@ Alternatively, load a JSON file with `--config /path/to/config.json`. The `Confi
 
 Startup checks static validity without probing external services. Model endpoints must be HTTP(S) base URLs without embedded credentials, a query, or a fragment. HTTP rules require absolute HTTP(S) URLs and a `code` of `0` (check for `200` by default) or `100` through `599`. Custom patrol commands must be nonempty. An explicitly configured knowledge file must be readable; startup reports an error rather than continuing without the expected context.
 
+To check a redirect response, set the HTTP rule's `code` to the expected `3xx` status, such as `302`. Other rules follow redirects and check the final response. The dashboard shows why a check failed and removes user credentials, query parameters, and fragments from the displayed address. The request still uses the configured address and credentials.
+
 ## Run the optional gateway
 
 After setting the credentials and model endpoint above in the same terminal, you can instead run:

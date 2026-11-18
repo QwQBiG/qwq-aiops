@@ -24,6 +24,7 @@
         <el-table-column :label="t('console.status')">
           <template #default="{ row }">
             <el-tag :type="row.Success ? 'success' : 'danger'">{{ t(row.Success ? 'dashboard.healthy' : 'dashboard.unhealthy') }}</el-tag>
+            <div v-if="!row.Success && row.Error" class="service-error">{{ row.Error }}</div>
           </template>
         </el-table-column>
       </el-table>
@@ -75,5 +76,6 @@ onUnmounted(poller.stop)
 .stat-value { font-size: 28px; margin: 10px 0; }
 .stat-detail { color: #94a3b8; font-size: 12px; margin-bottom: 12px; }
 .monitor-card { margin-top: 8px; }
+.service-error { margin-top: 4px; color: #fca5a5; overflow-wrap: anywhere; }
 .el-alert { margin-bottom: 16px; }
 </style>
